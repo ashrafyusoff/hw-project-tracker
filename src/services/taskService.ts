@@ -1,0 +1,115 @@
+import { db } from '@/database/db'
+import type { Task } from '@/types'
+import { clampProgress, newId, nowIso, todayStr } from '@/utils/helpers'
+import { ValidationError, checkDateOrder, requireText } from '@/utils/validation'
+import { logActivity } from './activityService'
+import { linkSupplierToProject } from './supplierService'
+
+export type TaskInput = Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'isSample'>
+
+function validate(i: TaskInput) {
+  requireText(i.name, 'Task name')
+  if (!i.projectId) throw new ValidationError('Please choose a project.')
+  checkDateOrder(i.startDate, i.dueDate, 'start date', 'due date')
+  checkDateOrder(i.startDate, i.completionDate, 'start date', 'completion date')
+}
+
+// A completed task gets 100% and a completion date automatically.
+function normalise(i: TaskInput): TaskInput {
+  const out = { ...i, name: i.name.trim(), progress: clampProgress(i.progress) }
+  if (out.status === 'Completed') {
+    out.progress = 100
+    if (!out.completionDate) out.completionDate = todayStr()
+  }
+  return out
+}
+
+export async function createTask(input: TaskInput) {
+  validate(input)
+  const data = normalise(input)
+  const now = nowIso()
+  const id = newId()
+  await db.transaction('rw', [db.tasks, db.projectSuppliers, db.activityLogs], async () => {
+    await db.tasks.add({ ...data, id, createdAt: now, updatedAt: now })
+    if (data.supplierId) await linkSupplierToProject(data.projectId, data.supplierId)
+    await logActivity('Task', id, data.projectId, 'Created', `Task "${data.name}" created`)
+  })
+}
+
+export async function updateTask(id: string, input: TaskInput) {
+  validate(input)
+  const data = normalise(input)
+  const old = await db.tasks.get(id)
+  if (!old) throw new ValidationError('Task no longer exists.')
+  await db.transaction('rw', [db.tasks, db.projectSuppliers, db.activityLogs], async () => {
+    await db.tasks.update(id, { ...data, updatedAt: nowIso() })
+    if (data.supplierId) await linkSupplierToProject(data.projectId, data.supplierId)
+    const changed = old.status !== data.status
+    await logActivity('Task', id, data.projectId, changed ? 'Status Changed' : 'Updated',
+      changed ? `Task "${data.name}" status: ${old.status} → ${data.status}` : `Task "${data.name}" updated`)
+  })
+}
+
+export async function deleteTask(id: string) {
+  const t = await db.tasks.get(id)
+  if (!t) return
+  await db.transaction('rw', [db.tasks, db.meetingActions, db.activityLogs], async () => {
+    // Meeting action items keep existing but lose their link to the deleted task.
+    await db.meetingActions.where('taskId').equals(id).modify({ taskId: '' })
+    await db.tasks.delete(id)
+    await logActivity('Task', id, t.projectId, 'Deleted', `Task "${t.name}" deleted`)
+  })
+}
+
+export async function rescheduleTask(id: string, newDueDate: string) {
+  const old = await db.tasks.get(id)
+  if (!old) throw new ValidationError('Task no longer exists.')
+  if (old.dueDate === newDueDate) return
+  let startDate = old.startDate
+  if (old.startDate && old.dueDate) {
+    const delta = new Date(newDueDate).getTime() - new Date(old.dueDate).getTime()
+    startDate = new Date(new Date(old.startDate).getTime() + delta).toISOString().slice(0, 10)
+  } else if (old.startDate && newDueDate < old.startDate) {
+    startDate = newDueDate
+  }
+  await db.transaction('rw', [db.tasks, db.activityLogs], async () => {
+    await db.tasks.update(id, { dueDate: newDueDate, startDate, updatedAt: nowIso() })
+    await logActivity('Task', id, old.projectId, 'Updated', `Task "${old.name}" rescheduled to ${newDueDate}`)
+  })
+}
+
+export async function duplicateTaskToDate(id: string, newDueDate: string) {
+  const old = await db.tasks.get(id)
+  if (!old) throw new ValidationError('Task no longer exists.')
+  let startDate = old.startDate
+  if (old.startDate && old.dueDate) {
+    const delta = new Date(newDueDate).getTime() - new Date(old.dueDate).getTime()
+    startDate = new Date(new Date(old.startDate).getTime() + delta).toISOString().slice(0, 10)
+  } else if (old.startDate && newDueDate < old.startDate) {
+    startDate = newDueDate
+  }
+  const now = nowIso()
+  const newTaskId = newId()
+  const copyName = `${old.name} (Copy)`
+  await db.transaction('rw', [db.tasks, db.activityLogs], async () => {
+    await db.tasks.add({
+      ...old,
+      id: newTaskId,
+      name: copyName,
+      startDate,
+      dueDate: newDueDate,
+      completionDate: '',
+      status: old.status === 'Completed' ? 'In Progress' : old.status,
+      progress: old.status === 'Completed' ? 0 : old.progress,
+      isSample: false,
+      createdAt: now,
+      updatedAt: now,
+    })
+    await logActivity('Task', newTaskId, old.projectId, 'Created', `Task "${copyName}" copied to ${newDueDate}`)
+  })
+}
+
+export const emptyTask = (projectId = ''): TaskInput => ({
+  projectId, workstreamId: '', name: '', assignee: '', supplierId: '', startDate: '', dueDate: '', completionDate: '',
+  priority: 'Medium', status: 'Not Started', progress: 0, remarks: '',
+})
