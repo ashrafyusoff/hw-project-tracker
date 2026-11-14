@@ -246,25 +246,23 @@ export function emptyDeliverableCommercial(projectId = '', workstreamId = '', su
     hardwareDelivery: 'Not Shipped',
     expectedDelivery: '',
     actualDelivery: '',
-    deliveryStatus: 'Pending',
+    deliveryStatus: 'Not Started',
     remarks: '',
   }
 }
 
-export async function saveDeliverableCommercial(input: DeliverableCommercialInput) {
+export async function saveDeliverableCommercial(input: DeliverableCommercialInput, allowEmpty = false) {
   if (!input.projectId) throw new ValidationError('Please choose a project.')
   if (!input.workstreamId) throw new ValidationError('Please choose a deliverable.')
-  checkDateOrder(input.quotationRequestDate, input.quotationReceivedDate, 'quotation request date', 'quotation received date')
-  checkDateOrder(input.petSubmissionDate, input.petApprovalDate, 'PET submission date', 'PET approval date')
   checkDateOrder(input.poIssueDate, input.expectedDelivery, 'PO issue date', 'expected delivery date')
   checkDateOrder(input.poIssueDate, input.actualDelivery, 'PO issue date', 'actual delivery date')
 
-  const hasQuote = !!(input.quotationNumber.trim() || input.quotationRequestDate || input.quotationReceivedDate || input.quotationAmount > 0)
-  const hasPet = !!(input.petReference.trim() || input.petSubmissionDate || input.petApprovalDate)
-  const hasPo = !!(input.poNumber.trim() || input.poIssueDate || input.expectedDelivery || input.actualDelivery || input.poAmount > 0 || input.hardwareDelivery !== 'Not Shipped')
+  const hasQuote = !!input.quotationNumber.trim()
+  const hasPet = !!input.petReference.trim()
+  const hasPo = !!(input.poNumber.trim() || input.poIssueDate || input.expectedDelivery || input.actualDelivery || input.poAmount > 0 || (input.deliveryStatus && input.deliveryStatus !== 'Not Started'))
 
-  if (!hasQuote && !hasPet && !hasPo) {
-    throw new ValidationError('Please enter at least one commercial stage (Quotation, PET, or PO / Delivery).')
+  if (!allowEmpty && !hasQuote && !hasPet && !hasPo) {
+    throw new ValidationError('Please enter at least one commercial stage (Quotation Number, PET Number, or PO / Hardware Delivery).')
   }
 
   const now = nowIso()

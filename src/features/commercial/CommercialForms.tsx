@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { GitCommitHorizontal, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useTable } from '@/hooks/useTable'
-import type { PetRecord, PoRecord, Project, Quotation, Supplier, Workstream } from '@/types'
+import { HARDWARE_STATUSES, type PetRecord, type PoRecord, type Project, type Quotation, type Supplier, type Workstream } from '@/types'
 import {
   clearDeliverableCommercial,
   emptyDeliverableCommercial,
@@ -17,9 +17,11 @@ const CURRENCIES = ['USD', 'MYR', 'SGD', 'JPY', 'EUR', 'CNY'] as const
 export function CommercialBadge({ status }: { status?: string }) {
   if (!status) return <span className="text-xs text-slate-400">—</span>
   const s = status.toLowerCase()
-  const color = s.includes('approv') || s.includes('accept') || s.includes('deliver') || s.includes('confirm') || s.includes('track') || s.includes('received') ? 'green'
+  const color = s.includes('deliver') && !s.includes('in deliver') ? 'green'
+    : s.includes('approv') || s.includes('accept') || s.includes('confirm') || s.includes('track') || s.includes('received') ? 'green'
     : s.includes('delay') || s.includes('reject') || s.includes('cancel') || s.includes('expir') ? 'red'
-    : s.includes('pend') || s.includes('submit') || s.includes('request') || s.includes('transit') || s.includes('fabricat') ? 'amber' : 'blue'
+    : s.includes('fabricat') || s.includes('in deliver') || s.includes('transit') || s.includes('pend') || s.includes('submit') || s.includes('request') ? 'amber'
+    : s.includes('not started') ? 'grey' : 'blue'
   return <Badge color={color}>{status}</Badge>
 }
 
@@ -69,7 +71,7 @@ export function buildDeliverableCommercialRows(
       key: ws.id,
       projectId: ws.projectId,
       projectCode: p?.code ?? '—',
-      projectName: p?.name ?? '',
+      projectName: p?.deviceName || p?.name || '',
       workstream: ws,
       supplierId,
       supplierName: supMap.get(supplierId) ?? '—',
@@ -80,6 +82,17 @@ export function buildDeliverableCommercialRows(
   })
 
   return rows
+}
+
+function normalizeHardwareStatus(po?: PoRecord): string {
+  const raw = po?.deliveryStatus || po?.hardwareDelivery || ''
+  if (HARDWARE_STATUSES.includes(raw as (typeof HARDWARE_STATUSES)[number])) return raw
+  const lower = raw.toLowerCase()
+  if (lower.includes('deliver') && !lower.includes('in deliver')) return 'Delivered'
+  if (lower.includes('received')) return 'Delivered'
+  if (lower.includes('ship') || lower.includes('transit') || lower.includes('in deliver')) return 'In Delivery'
+  if (lower.includes('fabricat') || lower.includes('track')) return 'In Fabrication'
+  return 'Not Started'
 }
 
 export function rowToCommercialInput(row: DeliverableCommercialRow): DeliverableCommercialInput {
@@ -104,13 +117,13 @@ export function rowToCommercialInput(row: DeliverableCommercialRow): Deliverable
     poNumber: po?.number ?? '',
     poStatus: po?.status ?? 'Issued',
     poIssueDate: po?.issueDate ?? '',
-    poAmount: po?.amount ?? q?.amount ?? 0,
-    poCurrency: po?.currency ?? q?.currency ?? 'USD',
+    poAmount: po?.amount ?? 0,
+    poCurrency: po?.currency ?? 'USD',
     supplierConfirmation: po?.supplierConfirmation ?? 'Pending',
     hardwareDelivery: po?.hardwareDelivery ?? 'Not Shipped',
     expectedDelivery: po?.expectedDelivery ?? '',
     actualDelivery: po?.actualDelivery ?? '',
-    deliveryStatus: po?.deliveryStatus ?? 'Pending',
+    deliveryStatus: normalizeHardwareStatus(po),
     remarks: po?.remarks || pet?.remarks || q?.remarks || '',
   }
 }
@@ -194,11 +207,11 @@ function DeliverableCommercialBody({
 
       {/* Deliverable & Supplier Link */}
       <div className="grid sm:grid-cols-3 gap-3 rounded-md border border-slate-200 bg-slate-50/70 p-3">
-        <Field label="Project" required>
+        <Field label="Project (HRS Number)" required>
           <Select
             value={form.projectId}
             onChange={(e) => setForm((f) => ({ ...f, projectId: e.target.value, workstreamId: '' }))}
-            options={[{ value: '', label: 'Select project…' }, ...projects.map((p) => ({ value: p.id, label: `${p.code} – ${p.name}` }))]}
+            options={[{ value: '', label: 'Select project…' }, ...projects.map((p) => ({ value: p.id, label: `${p.code}${p.deviceName ? ` – ${p.deviceName}` : ''}` }))]}
           />
         </Field>
         <Field label="Deliverable" required>
@@ -207,7 +220,7 @@ function DeliverableCommercialBody({
             onChange={(e) => handleDeliverableChange(e.target.value)}
             options={[
               { value: '', label: projectDeliverables.length ? 'Select deliverable…' : 'No deliverables in project' },
-              ...projectDeliverables.map((w) => ({ value: w.id, label: w.name })),
+              ...projectDeliverables.map((w) => ({ value: w.id, label: w.category || w.name })),
             ]}
           />
         </Field>
@@ -220,54 +233,19 @@ function DeliverableCommercialBody({
         </Field>
       </div>
 
-      {/* Stage 1: Quotation */}
-      <div className="rounded-md border border-slate-200 p-3 space-y-3">
-        <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide">1. Quotation</p>
-        <div className="grid sm:grid-cols-3 gap-3">
+      {/* Stage 1: Quotation + Stage 2: PET */}
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div className="rounded-md border border-slate-200 p-3 space-y-2">
+          <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide">1. Quotation</p>
           <Field label="Quotation Number">
             <Input value={form.quotationNumber} onChange={(e) => set('quotationNumber', e.target.value)} placeholder="Q-NOVA-1182" />
           </Field>
-          <Field label="Quote Status">
-            <Input value={form.quotationStatus} onChange={(e) => set('quotationStatus', e.target.value)} list="quote-statuses" placeholder="Requested, Accepted…" />
-          </Field>
-          <datalist id="quote-statuses">
-            {['Requested', 'Received', 'Under Review', 'Accepted', 'Rejected', 'Expired'].map((s) => <option key={s} value={s} />)}
-          </datalist>
-          <div className="grid grid-cols-2 gap-2">
-            <Field label="Quoted Amount">
-              <Input type="number" min={0} step="0.01" value={form.quotationAmount} onChange={(e) => set('quotationAmount', Number(e.target.value))} />
-            </Field>
-            <Field label="Currency">
-              <Select value={form.quotationCurrency} onChange={(e) => set('quotationCurrency', e.target.value)} options={CURRENCIES} />
-            </Field>
-          </div>
-          <Field label="Request Date">
-            <Input type="date" value={form.quotationRequestDate} onChange={(e) => set('quotationRequestDate', e.target.value)} />
-          </Field>
-          <Field label="Received Date">
-            <Input type="date" value={form.quotationReceivedDate} onChange={(e) => set('quotationReceivedDate', e.target.value)} />
-          </Field>
         </div>
-      </div>
 
-      {/* Stage 2: PET */}
-      <div className="rounded-md border border-slate-200 p-3 space-y-3">
-        <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide">2. PET (Project Expenditure Approval)</p>
-        <div className="grid sm:grid-cols-4 gap-3">
-          <Field label="PET Reference">
+        <div className="rounded-md border border-slate-200 p-3 space-y-2">
+          <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide">2. PET (Project Expenditure Approval)</p>
+          <Field label="PET Number">
             <Input value={form.petReference} onChange={(e) => set('petReference', e.target.value)} placeholder="PET-24-0132" />
-          </Field>
-          <Field label="PET Status">
-            <Input value={form.petStatus} onChange={(e) => set('petStatus', e.target.value)} list="pet-statuses" placeholder="Submitted, Approved…" />
-          </Field>
-          <datalist id="pet-statuses">
-            {['Draft', 'Submitted', 'Pending Approval', 'Approved', 'Rejected', 'On Hold'].map((s) => <option key={s} value={s} />)}
-          </datalist>
-          <Field label="Submission Date">
-            <Input type="date" value={form.petSubmissionDate} onChange={(e) => set('petSubmissionDate', e.target.value)} />
-          </Field>
-          <Field label="Approval Date">
-            <Input type="date" value={form.petApprovalDate} onChange={(e) => set('petApprovalDate', e.target.value)} />
           </Field>
         </div>
       </div>
@@ -275,16 +253,10 @@ function DeliverableCommercialBody({
       {/* Stage 3: PO & Delivery Tracking */}
       <div className="rounded-md border border-slate-200 p-3 space-y-3">
         <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide">3. Purchase Order (PO) & Hardware Delivery Tracking</p>
-        <div className="grid sm:grid-cols-4 gap-3">
+        <div className="grid sm:grid-cols-3 gap-3">
           <Field label="PO Number">
             <Input value={form.poNumber} onChange={(e) => set('poNumber', e.target.value)} placeholder="PO-4500711" />
           </Field>
-          <Field label="PO Status">
-            <Input value={form.poStatus} onChange={(e) => set('poStatus', e.target.value)} list="po-statuses" placeholder="Issued, Delivered…" />
-          </Field>
-          <datalist id="po-statuses">
-            {['Draft', 'Issued', 'Acknowledged', 'Partially Delivered', 'Delivered', 'Closed', 'Cancelled'].map((s) => <option key={s} value={s} />)}
-          </datalist>
           <Field label="PO Issue Date">
             <Input type="date" value={form.poIssueDate} onChange={(e) => set('poIssueDate', e.target.value)} />
           </Field>
@@ -296,30 +268,19 @@ function DeliverableCommercialBody({
               <Select value={form.poCurrency} onChange={(e) => set('poCurrency', e.target.value)} options={CURRENCIES} />
             </Field>
           </div>
-          <Field label="Supplier Confirmation">
-            <Input value={form.supplierConfirmation} onChange={(e) => set('supplierConfirmation', e.target.value)} list="sup-confirm" placeholder="Pending, Confirmed…" />
-          </Field>
-          <datalist id="sup-confirm">
-            {['Pending', 'Confirmed', 'Revised Schedule', 'Delayed'].map((s) => <option key={s} value={s} />)}
-          </datalist>
-          <Field label="Hardware Delivery Stage">
-            <Input value={form.hardwareDelivery} onChange={(e) => set('hardwareDelivery', e.target.value)} list="hw-deliv" placeholder="In Fabrication, Shipped…" />
-          </Field>
-          <datalist id="hw-deliv">
-            {['Not Shipped', 'In Fabrication', 'Shipped / In Transit', 'Received', 'Received & Inspected'].map((s) => <option key={s} value={s} />)}
-          </datalist>
           <Field label="Expected Delivery">
             <Input type="date" value={form.expectedDelivery} onChange={(e) => set('expectedDelivery', e.target.value)} />
           </Field>
           <Field label="Actual Delivery">
             <Input type="date" value={form.actualDelivery} onChange={(e) => set('actualDelivery', e.target.value)} />
           </Field>
-          <Field label="Delivery Status">
-            <Input value={form.deliveryStatus} onChange={(e) => set('deliveryStatus', e.target.value)} list="deliv-status" placeholder="On Track, Delayed, Delivered…" />
+          <Field label="Hardware Status">
+            <Select
+              options={HARDWARE_STATUSES}
+              value={HARDWARE_STATUSES.includes(form.deliveryStatus as (typeof HARDWARE_STATUSES)[number]) ? form.deliveryStatus : 'Not Started'}
+              onChange={(e) => set('deliveryStatus', e.target.value)}
+            />
           </Field>
-          <datalist id="deliv-status">
-            {['Pending', 'On Track', 'In Transit', 'Delayed', 'Delivered'].map((s) => <option key={s} value={s} />)}
-          </datalist>
         </div>
       </div>
 
@@ -333,7 +294,7 @@ function DeliverableCommercialBody({
 }
 
 /**
- * Single Unified Commercial & Delivery Table (Quotation + PET + PO + Delivery Tracking per Deliverable; no PR).
+ * Single Unified Commercial & Delivery Table (Quotation # + PET # + PO + Hardware Status per Deliverable; no PR).
  */
 export function UnifiedCommercialTable({
   rows,
@@ -364,7 +325,7 @@ export function UnifiedCommercialTable({
       {rows.length === 0 ? (
         <EmptyState
           title="No deliverable commercial records"
-          hint="Add a Deliverable to your project first, then track its Quotation, PET, PO, and Delivery in one unified table."
+          hint="Add a Deliverable to your project first, then track its Quotation Number, PET Number, PO, and Hardware Status in one unified table."
           action={onAddCommercial && <Button variant="primary" size="sm" onClick={onAddCommercial}><Plus className="h-3.5 w-3.5" /> Add Commercial</Button>}
         />
       ) : (
@@ -372,13 +333,13 @@ export function UnifiedCommercialTable({
           <table className="w-full text-sm">
             <thead className="text-xs text-slate-600 text-left bg-slate-50">
               <tr>
-                {showProject && <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Project</th>}
+                {showProject && <th className="px-3 py-2.5 font-semibold whitespace-nowrap">HRS Number</th>}
                 <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Deliverable</th>
                 <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Supplier</th>
-                <th className="px-3 py-2.5 font-semibold whitespace-nowrap bg-blue-50/40">Quotation</th>
-                <th className="px-3 py-2.5 font-semibold whitespace-nowrap bg-indigo-50/40">PET</th>
+                <th className="px-3 py-2.5 font-semibold whitespace-nowrap bg-blue-50/40">Quotation Number</th>
+                <th className="px-3 py-2.5 font-semibold whitespace-nowrap bg-indigo-50/40">PET Number</th>
                 <th className="px-3 py-2.5 font-semibold whitespace-nowrap bg-emerald-50/40">Purchase Order (PO)</th>
-                <th className="px-3 py-2.5 font-semibold whitespace-nowrap bg-amber-50/40">Delivery Tracking</th>
+                <th className="px-3 py-2.5 font-semibold whitespace-nowrap bg-amber-50/40">Hardware Status & Delivery</th>
                 <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Remarks</th>
                 <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Actions</th>
               </tr>
@@ -387,59 +348,41 @@ export function UnifiedCommercialTable({
               {rows.map((r) => {
                 const { quotation: q, pet, po, workstream: ws } = r
                 const hasAny = !!(q || pet || po)
-                const late = po && !po.actualDelivery && isPast(po.expectedDelivery) && po.deliveryStatus !== 'Delivered'
+                const hwStatus = normalizeHardwareStatus(po)
+                const late = po && !po.actualDelivery && isPast(po.expectedDelivery) && hwStatus !== 'Delivered'
                 const remarks = po?.remarks || pet?.remarks || q?.remarks || ''
                 return (
                   <tr key={r.key} className="border-t border-slate-200 hover:bg-slate-50/80 align-top">
                     {showProject && (
                       <td className="px-3 py-2.5 whitespace-nowrap">
                         <span className="font-semibold text-primary">{r.projectCode}</span>
-                        <div className="text-xs text-slate-500 truncate max-w-[140px]">{r.projectName}</div>
+                        {r.projectName && <div className="text-xs text-slate-500 truncate max-w-[140px]">{r.projectName}</div>}
                       </td>
                     )}
                     <td className="px-3 py-2.5">
                       <div className="flex items-center gap-1.5 font-medium text-slate-800">
                         <GitCommitHorizontal className="h-3.5 w-3.5 text-primary shrink-0" />
-                        <span>{ws.name}</span>
+                        <span>{ws.category || ws.name}</span>
                       </div>
-                      <div className="text-xs text-slate-500 mt-0.5 pl-5">{ws.category} · <Badge>{ws.status}</Badge></div>
+                      <div className="text-xs text-slate-500 mt-0.5 pl-5"><Badge>{ws.status}</Badge></div>
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-slate-700">{r.supplierName}</td>
 
-                    {/* Quotation column */}
-                    <td className="px-3 py-2.5 bg-blue-50/15">
-                      {q ? (
-                        <div className="space-y-0.5">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-semibold text-slate-800">{q.number}</span>
-                            <CommercialBadge status={q.status} />
-                          </div>
-                          <div className="text-xs font-medium text-slate-700">
-                            {q.amount ? `${q.currency} ${q.amount.toLocaleString()}` : 'Amount TBD'}
-                          </div>
-                          <div className="text-[11px] text-slate-500 whitespace-nowrap">
-                            Req: {formatDate(q.requestDate)} · Recv: {formatDate(q.receivedDate)}
-                          </div>
-                        </div>
+                    {/* Quotation Number column */}
+                    <td className="px-3 py-2.5 bg-blue-50/15 whitespace-nowrap">
+                      {q?.number ? (
+                        <span className="font-semibold text-slate-800">{q.number}</span>
                       ) : (
-                        <span className="text-xs text-slate-400">Not started</span>
+                        <span className="text-xs text-slate-400">—</span>
                       )}
                     </td>
 
-                    {/* PET column */}
-                    <td className="px-3 py-2.5 bg-indigo-50/15">
-                      {pet ? (
-                        <div className="space-y-0.5">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-semibold text-slate-800">{pet.reference}</span>
-                            <CommercialBadge status={pet.status} />
-                          </div>
-                          <div className="text-[11px] text-slate-500 whitespace-nowrap">
-                            Sub: {formatDate(pet.submissionDate)} · Appr: {formatDate(pet.approvalDate)}
-                          </div>
-                        </div>
+                    {/* PET Number column */}
+                    <td className="px-3 py-2.5 bg-indigo-50/15 whitespace-nowrap">
+                      {pet?.reference ? (
+                        <span className="font-semibold text-slate-800">{pet.reference}</span>
                       ) : (
-                        <span className="text-xs text-slate-400">Not started</span>
+                        <span className="text-xs text-slate-400">—</span>
                       )}
                     </td>
 
@@ -447,47 +390,39 @@ export function UnifiedCommercialTable({
                     <td className="px-3 py-2.5 bg-emerald-50/15">
                       {po ? (
                         <div className="space-y-0.5">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-semibold text-slate-800">{po.number}</span>
-                            <CommercialBadge status={po.status} />
-                          </div>
+                          <div className="font-semibold text-slate-800">{po.number}</div>
                           <div className="text-xs font-medium text-slate-700">
-                            {po.amount ? `${po.currency} ${po.amount.toLocaleString()}` : 'Amount TBD'}
+                            {po.amount ? `${po.currency} ${po.amount.toLocaleString()}` : '—'}
                           </div>
                           <div className="text-[11px] text-slate-500 whitespace-nowrap">
                             Issued: {formatDate(po.issueDate)}
                           </div>
                         </div>
                       ) : (
-                        <span className="text-xs text-slate-400">Not issued</span>
+                        <span className="text-xs text-slate-400">—</span>
                       )}
                     </td>
 
-                    {/* Delivery Tracking column */}
+                    {/* Hardware Status & Delivery Tracking column */}
                     <td className="px-3 py-2.5 bg-amber-50/15">
-                      {po ? (
-                        <div className="space-y-0.5">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <CommercialBadge status={late ? 'Delayed' : po.deliveryStatus || po.status} />
-                            <span className="text-xs font-medium text-slate-700">{po.hardwareDelivery || 'Not Shipped'}</span>
-                          </div>
-                          <div className="text-[11px] text-slate-500">
-                            Supplier Conf: <b>{po.supplierConfirmation || 'Pending'}</b>
-                          </div>
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <CommercialBadge status={hwStatus} />
+                          {late && <Badge color="red">Overdue</Badge>}
+                        </div>
+                        {po && (
                           <div className={`text-[11px] whitespace-nowrap ${late ? 'text-red-600 font-semibold' : 'text-slate-500'}`}>
                             Exp: {formatDate(po.expectedDelivery)} · Act: {formatDate(po.actualDelivery)}
                           </div>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-slate-400">Awaiting PO</span>
-                      )}
+                        )}
+                      </div>
                     </td>
 
                     <td className="px-3 py-2.5 text-xs text-slate-500 max-w-[160px] truncate">{remarks || '—'}</td>
 
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       <div className="flex gap-1">
-                        <Button variant="ghost" size="sm" title="Edit Quotation / PET / PO / Delivery" onClick={() => openEdit(r)}>
+                        <Button variant="ghost" size="sm" title="Edit Quotation / PET / PO / Hardware Status" onClick={() => openEdit(r)}>
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
                         {hasAny && (
@@ -521,7 +456,7 @@ export function UnifiedCommercialTable({
           })
           setClearing(undefined)
         }}
-        message={<>Clear Quotation, PET, PO, and Delivery Tracking records for deliverable <b>{clearing?.workstream.name}</b>?</>}
+        message={<>Clear Quotation, PET, PO, and Delivery Tracking records for deliverable <b>{clearing?.workstream.category || clearing?.workstream.name}</b>?</>}
       />
     </>
   )

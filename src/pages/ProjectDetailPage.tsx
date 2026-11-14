@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ArrowLeft, GitBranch, Pencil, Plus, Trash2, Wallet, X } from 'lucide-react'
+import { ArrowLeft, GitBranch, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { db } from '@/database/db'
 import type { Milestone, Supplier, Task, Workstream } from '@/types'
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Loading, ProgressBar, Select } from '@/components/ui'
@@ -13,21 +13,17 @@ import { TaskTable } from '@/features/tasks/TaskTable'
 import { MilestoneTable } from '@/features/tasks/MilestoneTable'
 import {
   CommercialBadge,
-  DeliverableCommercialModal,
-  UnifiedCommercialTable,
   buildDeliverableCommercialRows,
-  rowToCommercialInput,
 } from '@/features/commercial/CommercialForms'
-import type { DeliverableCommercialInput } from '@/services/commercialService'
 import { deleteTask } from '@/services/taskService'
 import { deleteMilestone } from '@/services/milestoneService'
 import { deleteProject } from '@/services/projectService'
 import { deleteWorkstream } from '@/services/workstreamService'
 import { linkSupplierToProject, unlinkSupplierFromProject } from '@/services/supplierService'
-import { formatDate, formatDateTime } from '@/utils/helpers'
+import { formatDate, formatDateTime, isPast } from '@/utils/helpers'
 import { errorMessage } from '@/utils/validation'
 
-const TABS = ['Overview', 'Deliverables', 'Commercial', 'Tasks', 'Suppliers', 'Milestones', 'Activity History'] as const
+const TABS = ['Overview', 'Deliverables & Commercial', 'Tasks', 'Suppliers', 'Milestones', 'Activity History'] as const
 type Tab = (typeof TABS)[number]
 
 // Everything about ONE project, loaded live from the database.
@@ -60,6 +56,11 @@ function Table({ head, children }: { head: string[]; children: ReactNode }) {
   )
 }
 
+function deliverableDisplayName(w: Workstream) {
+  if (w.category === 'Others' && w.name && w.name !== 'Others') return `Others (${w.name})`
+  return w.name || w.category
+}
+
 export function ProjectDetailPage() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
@@ -76,10 +77,6 @@ export function ProjectDetailPage() {
   const [msOpen, setMsOpen] = useState(false)
   const [msEditing, setMsEditing] = useState<Milestone | undefined>()
   const [msDeleting, setMsDeleting] = useState<Milestone | undefined>()
-
-  const [commOpen, setCommOpen] = useState(false)
-  const [commInitial, setCommInitial] = useState<DeliverableCommercialInput | undefined>()
-  const [commDefaultWs, setCommDefaultWs] = useState('')
 
   const [linkId, setLinkId] = useState('')
   const [error, setError] = useState('')
@@ -107,8 +104,7 @@ export function ProjectDetailPage() {
   const unlinked = suppliers.filter((s) => !links.some((l) => l.supplierId === s.id))
   const run = async (fn: () => Promise<void>) => { try { setError(''); await fn() } catch (e) { setError(errorMessage(e)) } }
   const count = (t: Tab) => ({
-    Deliverables: workstreams.length,
-    Commercial: commercialRows.length,
+    'Deliverables & Commercial': workstreams.length,
     Tasks: tasks.length,
     Suppliers: linkedSuppliers.length,
     Milestones: milestones.length,
@@ -118,24 +114,18 @@ export function ProjectDetailPage() {
     <div><dt className="text-xs text-slate-500">{label}</dt><dd className="text-sm mt-0.5">{value || '—'}</dd></div>
   )
 
-  function openCommercialForDeliverable(ws: Workstream) {
-    const row = commercialRows.find((r) => r.workstream.id === ws.id)
-    if (row) {
-      setCommInitial(rowToCommercialInput(row))
-    } else {
-      setCommInitial(undefined)
-      setCommDefaultWs(ws.id)
-    }
-    setCommOpen(true)
-  }
-
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start gap-3">
         <Link to="/projects" className="mt-1 text-slate-400 hover:text-slate-700" aria-label="Back to projects"><ArrowLeft className="h-5 w-5" /></Link>
         <div>
-          <div className="flex items-center gap-2"><h2 className="text-lg font-semibold">{p.code} · {p.name}</h2><Badge>{p.status}</Badge><Badge>{p.priority}</Badge></div>
-          <p className="text-sm text-slate-500">{p.deviceName}{p.atePlatform && ` · ${p.atePlatform}`}</p>
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold">HRS {p.code}{p.deviceName ? ` · ${p.deviceName}` : ''}</h2>
+            <Badge color="blue">{p.hwType || 'FT'}</Badge>
+            <Badge>{p.status}</Badge>
+            <Badge>{p.priority}</Badge>
+          </div>
+          {p.atePlatform && <p className="text-sm text-slate-500">ATE Platform: {p.atePlatform}</p>}
         </div>
         <div className="ml-auto flex gap-2">
           <Button onClick={() => setEditOpen(true)}><Pencil className="h-4 w-4" /> Edit</Button>
@@ -156,23 +146,23 @@ export function ProjectDetailPage() {
       {tab === 'Overview' && (
         <Card>
           <div className="mb-4 max-w-sm"><p className="text-xs text-slate-500 mb-1">Overall progress</p><ProgressBar value={p.progress} /></div>
-          <dl className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Field label="Start Date" value={formatDate(p.startDate)} />
-            <Field label="Baseline Completion" value={formatDate(p.baselineDate)} />
-            <Field label="Revised Completion" value={formatDate(p.revisedDate)} />
-            <Field label="Actual Completion" value={formatDate(p.actualDate)} />
+          <dl className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Field label="HRS Number" value={p.code} />
+            <Field label="HW Type" value={p.hwType || 'FT'} />
+            <Field label="Device Name" value={p.deviceName} />
+            <Field label="ATE Platform" value={p.atePlatform} />
+            <Field label="Start Date (Creation Date)" value={formatDate(p.startDate)} />
+            <Field label="HW Required Date" value={formatDate(p.baselineDate)} />
           </dl>
           <dl className="grid gap-4 mt-4">
             <Field label="Description" value={p.description} />
-            <Field label="Objectives" value={p.objectives} />
-            <Field label="Remarks" value={p.remarks} />
           </dl>
         </Card>
       )}
 
-      {tab === 'Deliverables' && (
+      {tab === 'Deliverables & Commercial' && (
         <Card
-          title={`Project Deliverables (Branches of ${p.code})`}
+          title={`Deliverables & Commercial Tracking (Branches of HRS ${p.code})`}
           action={
             <Button size="sm" variant="primary" onClick={() => { setWsEditing(undefined); setWsOpen(true) }}>
               <Plus className="h-3.5 w-3.5" /> Add Deliverable
@@ -180,44 +170,55 @@ export function ProjectDetailPage() {
           }
         >
           {workstreams.length === 0 ? (
-            <EmptyState title="No deliverables yet" hint="Add PCB, test socket or handler kit deliverables as sub-items for this project." />
+            <EmptyState title="No deliverables yet" hint="Add PCB, Socket, Handler Kit, Stiffener, Probe Card, Probe Head, or Others deliverables for this project." />
           ) : (
-            <Table head={['Deliverable Branch', 'Category', 'Supplier', 'Status', 'Progress', 'Start', 'Target', 'Actual', 'Commercial Pipeline', '']}>
+            <Table head={['Deliverable Branch', 'MPN', 'Supplier', 'Status', 'Progress', 'Quotation #', 'PET #', 'Purchase Order (PO)', 'Hardware Status & Delivery', 'Remarks', '']}>
               {workstreams.map((w, idx) => {
                 const isLast = idx === workstreams.length - 1
                 const comm = commercialRows.find((r) => r.workstream.id === w.id)
                 const q = comm?.quotation
                 const pet = comm?.pet
                 const po = comm?.po
+                const hwStatus = po?.deliveryStatus || 'Not Started'
+                const late = po && !po.actualDelivery && isPast(po.expectedDelivery) && hwStatus !== 'Delivered'
                 return (
                   <tr key={w.id}>
                     <td className="font-medium whitespace-nowrap">
                       <span className="inline-flex items-center gap-1.5">
                         <span className="font-mono text-slate-400 font-bold">{isLast ? '└─' : '├─'}</span>
                         <GitBranch className="h-3.5 w-3.5 text-primary shrink-0" />
-                        <span>{w.name}</span>
+                        <span>{deliverableDisplayName(w)}</span>
                       </span>
                     </td>
-                    <td className="text-slate-500">{w.category}</td>
+                    <td className="font-mono text-xs text-slate-600 whitespace-nowrap">{w.mpn || '—'}</td>
                     <td>{supName(w.supplierId)}</td>
                     <td><Badge>{w.status}</Badge></td>
-                    <td className="w-36"><ProgressBar value={w.progress} /></td>
-                    <td className="whitespace-nowrap">{formatDate(w.startDate)}</td>
-                    <td className="whitespace-nowrap">{formatDate(w.targetDate)}</td>
-                    <td className="whitespace-nowrap">{formatDate(w.actualDate)}</td>
+                    <td className="w-32"><ProgressBar value={w.progress} /></td>
+                    <td className="whitespace-nowrap font-medium">{q?.number || '—'}</td>
+                    <td className="whitespace-nowrap font-medium">{pet?.reference || '—'}</td>
                     <td>
-                      <div className="flex flex-wrap items-center gap-1 text-xs">
-                        {q ? <Badge color="blue">Quote: {q.number}</Badge> : <span className="text-slate-400">Quote: —</span>}
-                        {pet ? <Badge color="violet">PET: {pet.reference}</Badge> : <span className="text-slate-400">· PET: —</span>}
-                        {po ? <CommercialBadge status={po.deliveryStatus || po.status} /> : <span className="text-slate-400">· PO: —</span>}
-                      </div>
+                      {po ? (
+                        <div className="text-xs space-y-0.5">
+                          <div className="font-semibold text-slate-800">{po.number}</div>
+                          {po.amount > 0 && <div className="text-slate-600">{po.currency} {po.amount.toLocaleString()}</div>}
+                          {po.issueDate && <div className="text-slate-400">Issued: {formatDate(po.issueDate)}</div>}
+                        </div>
+                      ) : '—'}
                     </td>
                     <td>
+                      <div className="space-y-0.5">
+                        <CommercialBadge status={hwStatus} />
+                        {po && (po.expectedDelivery || po.actualDelivery) && (
+                          <div className={`text-[11px] whitespace-nowrap ${late ? 'text-red-600 font-semibold' : 'text-slate-500'}`}>
+                            Exp: {formatDate(po.expectedDelivery)} · Act: {formatDate(po.actualDelivery)}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td className="text-slate-500 max-w-xs truncate">{w.remarks || po?.remarks || '—'}</td>
+                    <td>
                       <div className="flex gap-1">
-                        <Button variant="ghost" size="sm" title="Edit Deliverable Commercial" onClick={() => openCommercialForDeliverable(w)}>
-                          <Wallet className="h-3.5 w-3.5 text-primary" />
-                        </Button>
-                        <Button variant="ghost" size="sm" aria-label="Edit deliverable" onClick={() => { setWsEditing(w); setWsOpen(true) }}>
+                        <Button variant="ghost" size="sm" title="Edit Deliverable & Commercial" onClick={() => { setWsEditing(w); setWsOpen(true) }}>
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
                         <Button variant="ghost" size="sm" aria-label="Delete deliverable" onClick={() => setWsDeleting(w)}>
@@ -230,40 +231,6 @@ export function ProjectDetailPage() {
               })}
             </Table>
           )}
-        </Card>
-      )}
-
-      {tab === 'Commercial' && (
-        <Card
-          title="Deliverable Commercial & Delivery Tracking (Quotation · PET · PO · Delivery)"
-          className="[&>div]:!p-0"
-          action={
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={() => {
-                setCommInitial(undefined)
-                setCommDefaultWs(workstreams[0]?.id ?? '')
-                setCommOpen(true)
-              }}
-            >
-              <Plus className="h-3.5 w-3.5" /> Update Commercial
-            </Button>
-          }
-        >
-          <UnifiedCommercialTable
-            rows={commercialRows}
-            showProject={false}
-            onEditRow={(r) => {
-              setCommInitial(rowToCommercialInput(r))
-              setCommOpen(true)
-            }}
-            onAddCommercial={() => {
-              setCommInitial(undefined)
-              setCommDefaultWs(workstreams[0]?.id ?? '')
-              setCommOpen(true)
-            }}
-          />
         </Card>
       )}
 
@@ -288,7 +255,7 @@ export function ProjectDetailPage() {
               {linkedSuppliers.map((s) => (
                 <tr key={s.id}>
                   <td className="font-medium">{s.name}</td><td className="text-slate-500">{s.category}</td><td>{s.contactPerson}</td>
-                  <td>{workstreams.filter((w) => w.supplierId === s.id).map((w) => w.name).join(', ') || '—'}</td>
+                  <td>{workstreams.filter((w) => w.supplierId === s.id).map((w) => deliverableDisplayName(w)).join(', ') || '—'}</td>
                   <td><Button variant="ghost" size="sm" aria-label="Remove supplier" onClick={() => run(() => unlinkSupplierFromProject(p.id, s.id))}><X className="h-3.5 w-3.5" /></Button></td>
                 </tr>
               ))}
@@ -325,13 +292,6 @@ export function ProjectDetailPage() {
         </Card>
       )}
 
-      <DeliverableCommercialModal
-        open={commOpen}
-        initial={commInitial}
-        defaultProjectId={p.id}
-        defaultWorkstreamId={commDefaultWs}
-        onClose={() => setCommOpen(false)}
-      />
       <TaskForm open={taskOpen} task={taskEditing} defaultProjectId={p.id} onClose={() => setTaskOpen(false)} />
       <MilestoneForm open={msOpen} milestone={msEditing} defaultProjectId={p.id} onClose={() => setMsOpen(false)} />
       <ConfirmDialog open={!!taskDeleting} title="Delete task?" onCancel={() => setTaskDeleting(undefined)}
@@ -344,10 +304,10 @@ export function ProjectDetailPage() {
       <WorkstreamForm open={wsOpen} projectId={p.id} workstream={wsEditing} suppliers={suppliers} onClose={() => setWsOpen(false)} />
       <ConfirmDialog open={!!wsDeleting} title="Delete deliverable?" onCancel={() => setWsDeleting(undefined)}
         onConfirm={() => run(async () => { await deleteWorkstream(wsDeleting!.id); setWsDeleting(undefined) })}
-        message={<>Delete deliverable <b>{wsDeleting?.name}</b>? Tasks and milestones linked to it are kept but no longer assigned to a deliverable.</>} />
+        message={<>Delete deliverable <b>{wsDeleting ? deliverableDisplayName(wsDeleting) : ''}</b>? Tasks and milestones linked to it are kept but no longer assigned to a deliverable.</>} />
       <ConfirmDialog open={deleteOpen} title="Delete project?" onCancel={() => setDeleteOpen(false)}
         onConfirm={() => run(async () => { await deleteProject(p.id); navigate('/projects') })}
-        message={<>This permanently deletes <b>{p.code} – {p.name}</b> and everything linked to it. This cannot be undone.</>} />
+        message={<>This permanently deletes <b>HRS {p.code}</b> and everything linked to it. This cannot be undone.</>} />
     </div>
   )
 }

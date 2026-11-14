@@ -35,24 +35,23 @@ export async function buildSheets(name: ReportName): Promise<Record<string, Row[
       const deliverables = await db.workstreams.toArray()
       return {
         Projects: projects.map((p) => ({
-          'Project Code': p.code, 'Project Name': p.name, 'Device': p.deviceName, 'ATE Platform': p.atePlatform,
+          'HRS Number': p.code, 'HW Type': p.hwType || 'FT', 'Device Name': p.deviceName, 'ATE Platform': p.atePlatform,
           Priority: p.priority, Status: p.status, 'Progress %': p.progress, 'Start Date': p.startDate,
-          'Baseline Date': p.baselineDate, 'Revised Date': p.revisedDate, 'Actual Date': p.actualDate, Remarks: p.remarks,
+          'HW Required Date': p.baselineDate, Description: p.description,
         })),
         Deliverables: deliverables.map((w) => ({
-          Project: L.proj(w.projectId), Deliverable: w.name, Category: w.category, Supplier: L.sup(w.supplierId),
-          Status: w.status, 'Progress %': w.progress, 'Start Date': w.startDate, 'Target Date': w.targetDate,
-          'Actual Date': w.actualDate, Remarks: w.remarks,
+          'HRS Number': L.proj(w.projectId), Deliverable: w.name || w.category, MPN: w.mpn ?? '', Supplier: L.sup(w.supplierId),
+          Status: w.status, 'Progress %': w.progress, Remarks: w.remarks,
         })),
       }
     }
     case 'Tasks':
       return { Tasks: (await db.tasks.toArray()).map((t) => ({
-        Task: t.name, Project: L.proj(t.projectId), Deliverable: L.ws(t.workstreamId), Assignee: t.assignee, Supplier: L.sup(t.supplierId),
+        Task: t.name, 'HRS Number': L.proj(t.projectId), Deliverable: L.ws(t.workstreamId), Assignee: t.assignee, Supplier: L.sup(t.supplierId),
         Start: t.startDate, Due: t.dueDate, Completed: t.completionDate, Priority: t.priority, Status: t.status, 'Progress %': t.progress, Remarks: t.remarks })) }
     case 'Milestones':
       return { Milestones: (await db.milestones.toArray()).map((m) => ({
-        Milestone: m.name, Project: L.proj(m.projectId), Deliverable: L.ws(m.workstreamId), Description: m.description,
+        Milestone: m.name, 'HRS Number': L.proj(m.projectId), Deliverable: L.ws(m.workstreamId), Description: m.description,
         Target: m.targetDate, Actual: m.actualDate, Status: m.status, Remarks: m.remarks })) }
     case 'Suppliers':
       return { Suppliers: (await db.suppliers.toArray()).map((s) => ({
@@ -67,31 +66,20 @@ export async function buildSheets(name: ReportName): Promise<Record<string, Row[
           const pet = pets.find((r) => r.workstreamId === w.id || (!r.workstreamId && r.projectId === w.projectId && r.supplierId === w.supplierId))
           const po = pos.find((r) => r.workstreamId === w.id || (!r.workstreamId && r.projectId === w.projectId && r.supplierId === w.supplierId))
           return {
-            Project: L.proj(w.projectId),
-            Deliverable: w.name,
-            Category: w.category,
+            'HRS Number': L.proj(w.projectId),
+            Deliverable: w.name || w.category,
+            MPN: w.mpn ?? '',
             Supplier: L.sup(w.supplierId || q?.supplierId || pet?.supplierId || po?.supplierId || ''),
-            'Quotation #': q?.number ?? '',
-            'Quote Status': q?.status ?? '',
-            'Quoted Amount': q?.amount ?? '',
-            'Quote Currency': q?.currency ?? '',
-            'Quote Requested': q?.requestDate ?? '',
-            'Quote Received': q?.receivedDate ?? '',
-            'PET Reference': pet?.reference ?? '',
-            'PET Status': pet?.status ?? '',
-            'PET Submitted': pet?.submissionDate ?? '',
-            'PET Approved': pet?.approvalDate ?? '',
-            'PO #': po?.number ?? '',
-            'PO Status': po?.status ?? '',
-            'PO Issued': po?.issueDate ?? '',
+            'Quotation Number': q?.number ?? '',
+            'PET Number': pet?.reference ?? '',
+            'PO Number': po?.number ?? '',
+            'PO Issue Date': po?.issueDate ?? '',
             'PO Amount': po?.amount ?? '',
             'PO Currency': po?.currency ?? '',
-            'Supplier Confirmation': po?.supplierConfirmation ?? '',
-            'Hardware Delivery': po?.hardwareDelivery ?? '',
             'Expected Delivery': po?.expectedDelivery ?? '',
             'Actual Delivery': po?.actualDelivery ?? '',
-            'Delivery Status': po?.deliveryStatus ?? '',
-            Remarks: po?.remarks || pet?.remarks || q?.remarks || '',
+            'Hardware Status': po?.deliveryStatus ?? 'Not Started',
+            Remarks: po?.remarks || pet?.remarks || q?.remarks || w.remarks || '',
           }
         }),
       }

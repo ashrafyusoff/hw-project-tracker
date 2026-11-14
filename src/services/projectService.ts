@@ -1,32 +1,34 @@
 import { db } from '@/database/db'
 import type { Project } from '@/types'
-import { clampProgress, newId, nowIso } from '@/utils/helpers'
+import { clampProgress, newId, nowIso, todayStr } from '@/utils/helpers'
 import { ValidationError, checkDateOrder, requireText } from '@/utils/validation'
 import { logActivity } from './activityService'
 
 export type ProjectInput = Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'isSample'>
 
 function validate(input: ProjectInput) {
-  requireText(input.code, 'Project code')
-  requireText(input.name, 'Project name')
-  checkDateOrder(input.startDate, input.baselineDate, 'start date', 'baseline completion date')
+  requireText(input.code, 'HRS Number')
+  checkDateOrder(input.startDate, input.baselineDate, 'start date', 'HW required date')
   checkDateOrder(input.startDate, input.revisedDate, 'start date', 'revised completion date')
   checkDateOrder(input.startDate, input.actualDate, 'start date', 'actual completion date')
 }
 
 async function assertCodeUnique(code: string, ignoreId?: string) {
   const existing = await db.projects.where('code').equalsIgnoreCase(code.trim()).first()
-  if (existing && existing.id !== ignoreId) throw new ValidationError(`Project code "${code}" is already used.`)
+  if (existing && existing.id !== ignoreId) throw new ValidationError(`HRS Number "${code}" is already used.`)
 }
 
 export async function createProject(input: ProjectInput): Promise<string> {
-  validate(input)
-  const code = input.code.trim()
+  const startDate = input.startDate || todayStr()
+  const normalized = { ...input, startDate }
+  validate(normalized)
+  const code = normalized.code.trim()
   await assertCodeUnique(code)
+  const name = normalized.name.trim() || normalized.deviceName.trim() || code
   const now = nowIso()
   const id = newId()
   await db.transaction('rw', db.projects, db.activityLogs, async () => {
-    await db.projects.add({ ...input, code, name: input.name.trim(), progress: clampProgress(input.progress), id, createdAt: now, updatedAt: now })
+    await db.projects.add({ ...normalized, code, name, progress: clampProgress(normalized.progress), id, createdAt: now, updatedAt: now })
     await logActivity('Project', id, id, 'Created', `Project ${code} created`)
   })
   return id
@@ -38,8 +40,9 @@ export async function updateProject(id: string, input: ProjectInput) {
   await assertCodeUnique(code, id)
   const old = await db.projects.get(id)
   if (!old) throw new ValidationError('Project no longer exists.')
+  const name = input.name.trim() || input.deviceName.trim() || code
   await db.transaction('rw', db.projects, db.activityLogs, async () => {
-    await db.projects.update(id, { ...input, code, name: input.name.trim(), progress: clampProgress(input.progress), updatedAt: nowIso() })
+    await db.projects.update(id, { ...input, code, name, progress: clampProgress(input.progress), updatedAt: nowIso() })
     if (old.status !== input.status) {
       await logActivity('Project', id, id, 'Status Changed', `Project ${code} status: ${old.status} → ${input.status}`)
     } else {
@@ -70,7 +73,7 @@ export async function deleteProject(id: string) {
 }
 
 export const emptyProject = (): ProjectInput => ({
-  code: '', name: '', deviceName: '', atePlatform: '', description: '', objectives: '',
-  priority: 'Medium', status: 'Planning', startDate: '', baselineDate: '', revisedDate: '', actualDate: '',
+  code: '', name: '', hwType: 'FT', deviceName: '', atePlatform: '', description: '', objectives: '',
+  priority: 'Medium', status: 'Planning', startDate: todayStr(), baselineDate: '', revisedDate: '', actualDate: '',
   progress: 0, remarks: '',
 })

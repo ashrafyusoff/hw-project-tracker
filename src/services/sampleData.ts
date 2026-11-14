@@ -23,24 +23,24 @@ export async function loadSampleData() {
   const suppliers = [nova, meridian, apex, bright, kestrel]
 
   // ---------- Projects ----------
-  const falcon = { ...base(), code: 'NPI-2401', name: 'Falcon-X Power Management', deviceName: 'FX7200 PMIC', atePlatform: 'Advantest V93000', description: 'Load board and socket for final test of the FX7200 multi-rail PMIC.', objectives: 'Release production-ready hardware for first silicon qualification.', priority: 'High' as const, status: 'In Progress' as const, startDate: d(-60), baselineDate: d(45), revisedDate: '', actualDate: '', progress: 55, remarks: '' }
-  const orion = { ...base(), code: 'NPI-2402', name: 'Orion RF Transceiver', deviceName: 'OR5G-200', atePlatform: 'Teradyne UltraFLEX', description: 'RF test hardware including a 24-layer load board and handler kit.', objectives: 'Support RF characterisation and production test.', priority: 'Critical' as const, status: 'Delayed' as const, startDate: d(-90), baselineDate: d(-5), revisedDate: d(30), actualDate: '', progress: 40, remarks: 'PCB fabrication slipped due to material shortage.' }
-  const atlas = { ...base(), code: 'NPI-2403', name: 'Atlas MCU Gen3', deviceName: 'AT32M3', atePlatform: 'Teradyne J750', description: 'Hardware for a new 32-bit microcontroller family.', objectives: 'Prepare probe and final-test hardware before tape-out.', priority: 'Medium' as const, status: 'Planning' as const, startDate: d(10), baselineDate: d(120), revisedDate: '', actualDate: '', progress: 5, remarks: '' }
-  const lynx = { ...base(), code: 'NPI-2398', name: 'Lynx Sensor Hub', deviceName: 'LX-110', atePlatform: 'Advantest V93000', description: 'Sensor hub test hardware, now in production.', objectives: 'Complete hardware release and handover.', priority: 'Low' as const, status: 'Completed' as const, startDate: d(-200), baselineDate: d(-40), revisedDate: '', actualDate: d(-42), progress: 100, remarks: 'Handed over to production.' }
+  const falcon = { ...base(), code: '240101', name: 'FX7200 PMIC', hwType: 'FT' as const, deviceName: 'FX7200 PMIC', atePlatform: 'Advantest V93000', description: 'Load board and socket for final test of the FX7200 multi-rail PMIC.', objectives: '', priority: 'High' as const, status: 'In Progress' as const, startDate: d(-60), baselineDate: d(45), revisedDate: '', actualDate: '', progress: 60, remarks: '' }
+  const orion = { ...base(), code: '240102', name: 'OR5G-200', hwType: 'FT' as const, deviceName: 'OR5G-200', atePlatform: 'Teradyne UltraFLEX', description: 'RF test hardware including a 24-layer load board and handler kit.', objectives: '', priority: 'Critical' as const, status: 'Delayed' as const, startDate: d(-90), baselineDate: d(30), revisedDate: '', actualDate: '', progress: 40, remarks: '' }
+  const atlas = { ...base(), code: '240103', name: 'AT32M3', hwType: 'WT' as const, deviceName: 'AT32M3', atePlatform: 'Teradyne J750', description: 'Hardware for a new 32-bit microcontroller family.', objectives: '', priority: 'Medium' as const, status: 'Planning' as const, startDate: d(0), baselineDate: d(120), revisedDate: '', actualDate: '', progress: 10, remarks: '' }
+  const lynx = { ...base(), code: '239804', name: 'LX-110', hwType: 'Eng' as const, deviceName: 'LX-110', atePlatform: 'Advantest V93000', description: 'Sensor hub test hardware, now in production.', objectives: '', priority: 'Low' as const, status: 'Completed' as const, startDate: d(-200), baselineDate: d(-40), revisedDate: '', actualDate: '', progress: 100, remarks: '' }
   const projects = [falcon, orion, atlas, lynx]
 
-  // ---------- Workstreams ----------
-  const ws = (projectId: string, name: string, category: 'PCB Development' | 'Test Socket Development' | 'Handler Kit Development' | 'Other', supplierId: string, status: 'Not Started' | 'In Progress' | 'On Hold' | 'Delayed' | 'Completed', progress: number, s: number, t: number, actual = '') =>
-    ({ ...base(), projectId, name, category, supplierId, status, progress, startDate: d(s), targetDate: d(t), actualDate: actual, remarks: '' })
-  const wFalconPcb = ws(falcon.id, 'FX7200 Load Board', 'PCB Development', nova.id, 'In Progress', 70, -55, 20)
-  const wFalconSock = ws(falcon.id, 'FX7200 Test Socket', 'Test Socket Development', meridian.id, 'In Progress', 45, -30, 35)
-  const wOrionPcb = ws(orion.id, 'OR5G 24-Layer Load Board', 'PCB Development', nova.id, 'Delayed', 50, -85, 25)
-  const wOrionHandler = ws(orion.id, 'OR5G Handler Change Kit', 'Handler Kit Development', apex.id, 'In Progress', 30, -40, 40)
-  const wOrionAssy = ws(orion.id, 'Load Board Assembly', 'Other', kestrel.id, 'Not Started', 0, 26, 40)
-  const wAtlasPcb = ws(atlas.id, 'AT32M3 Probe Card Interface Board', 'PCB Development', '', 'Not Started', 0, 15, 80)
-  const wLynxPcb = ws(lynx.id, 'LX-110 Load Board', 'PCB Development', nova.id, 'Completed', 100, -190, -60, d(-62))
-  const wLynxSock = ws(lynx.id, 'LX-110 Test Socket', 'Test Socket Development', meridian.id, 'Completed', 100, -170, -50, d(-52))
-  const workstreams = [wFalconPcb, wFalconSock, wOrionPcb, wOrionHandler, wOrionAssy, wAtlasPcb, wLynxPcb, wLynxSock]
+  // ---------- Deliverables ----------
+  const ws = (projectId: string, category: 'PCB' | 'Socket' | 'Handler Kit' | 'Stiffener' | 'Probe Card' | 'Probe Head' | 'Others', mpn: string, supplierId: string, status: 'Not Started' | 'In Progress' | 'On Hold' | 'Delayed' | 'Completed', progress: number) =>
+    ({ ...base(), projectId, name: category, category, mpn, supplierId, status, progress, startDate: '', targetDate: '', actualDate: '', remarks: '' })
+  const wFalconPcb = ws(falcon.id, 'PCB', '71F104201', nova.id, 'In Progress', 70)
+  const wFalconSock = ws(falcon.id, 'Socket', '71F104202', meridian.id, 'In Progress', 50)
+  const wOrionPcb = ws(orion.id, 'PCB', '71F208110', nova.id, 'Delayed', 50)
+  const wOrionHandler = ws(orion.id, 'Handler Kit', '71F208115', apex.id, 'In Progress', 30)
+  const wOrionStiff = ws(orion.id, 'Stiffener', '71F208119', kestrel.id, 'Not Started', 0)
+  const wAtlasPcb = ws(atlas.id, 'Probe Card', '71F309001', '', 'Not Started', 0)
+  const wLynxPcb = ws(lynx.id, 'PCB', '71F098401', nova.id, 'Completed', 100)
+  const wLynxSock = ws(lynx.id, 'Socket', '71F098402', meridian.id, 'Completed', 100)
+  const workstreams = [wFalconPcb, wFalconSock, wOrionPcb, wOrionHandler, wOrionStiff, wAtlasPcb, wLynxPcb, wLynxSock]
 
   // ---------- Project ↔ Supplier links ----------
   const links: [string, string][] = [
@@ -60,7 +60,7 @@ export async function loadSampleData() {
   const t4 = task(falcon.id, '', 'Prepare test program hardware checklist', 'Alex Chen', '', 0, 12, 'Medium', 'Not Started', 0)
   const t5 = task(orion.id, wOrionPcb.id, 'Chase revised fabrication schedule', 'Me', nova.id, -15, -4, 'Critical', 'Waiting for Supplier', 40)
   const t6 = task(orion.id, wOrionHandler.id, 'Review handler kit 3D drawing', 'Me', apex.id, -8, 5, 'High', 'In Progress', 55)
-  const t7 = task(orion.id, wOrionAssy.id, 'Book assembly slot with Kestrel', 'Me', kestrel.id, 5, 20, 'Medium', 'Not Started', 0)
+  const t7 = task(orion.id, wOrionStiff.id, 'Book stiffener slot with Kestrel', 'Me', kestrel.id, 5, 20, 'Medium', 'Not Started', 0)
   const t8 = task(atlas.id, wAtlasPcb.id, 'Define interface board requirements', 'Me', '', 10, 25, 'Medium', 'Not Started', 0)
   const t9 = task(lynx.id, wLynxPcb.id, 'Hand over hardware documentation', 'Me', '', -60, -45, 'Low', 'Completed', 100)
   const tasks = [t1, t2, t3, t4, t5, t6, t7, t8, t9]
@@ -98,9 +98,9 @@ export async function loadSampleData() {
     { ...base(), reference: 'PET-24-0088', projectId: lynx.id, workstreamId: wLynxSock.id, supplierId: meridian.id, submissionDate: d(-164), approvalDate: d(-161), status: 'Approved', remarks: '' },
   ]
   const poRecords = [
-    { ...base(), number: 'PO-4500711', projectId: falcon.id, workstreamId: wFalconPcb.id, supplierId: nova.id, issueDate: d(-33), amount: 8450, currency: 'USD', expectedDelivery: d(20), actualDelivery: '', status: 'Issued', supplierConfirmation: 'Confirmed', hardwareDelivery: 'In Fabrication', deliveryStatus: 'On Track', remarks: '' },
-    { ...base(), number: 'PO-4500728', projectId: falcon.id, workstreamId: wFalconSock.id, supplierId: meridian.id, issueDate: d(-12), amount: 3200, currency: 'USD', expectedDelivery: d(35), actualDelivery: '', status: 'Issued', supplierConfirmation: 'Confirmed', hardwareDelivery: 'In Fabrication', deliveryStatus: 'On Track', remarks: '' },
-    { ...base(), number: 'PO-4500690', projectId: orion.id, workstreamId: wOrionPcb.id, supplierId: nova.id, issueDate: d(-65), amount: 11200, currency: 'USD', expectedDelivery: d(-5), actualDelivery: '', status: 'Issued', supplierConfirmation: 'Revised Schedule', hardwareDelivery: 'In Fabrication', deliveryStatus: 'Delayed', remarks: 'PCB fabrication slipped due to laminate shortage.' },
+    { ...base(), number: 'PO-4500711', projectId: falcon.id, workstreamId: wFalconPcb.id, supplierId: nova.id, issueDate: d(-33), amount: 8450, currency: 'USD', expectedDelivery: d(20), actualDelivery: '', status: 'Issued', supplierConfirmation: 'Confirmed', hardwareDelivery: 'In Fabrication', deliveryStatus: 'In Fabrication', remarks: '' },
+    { ...base(), number: 'PO-4500728', projectId: falcon.id, workstreamId: wFalconSock.id, supplierId: meridian.id, issueDate: d(-12), amount: 3200, currency: 'USD', expectedDelivery: d(35), actualDelivery: '', status: 'Issued', supplierConfirmation: 'Confirmed', hardwareDelivery: 'In Fabrication', deliveryStatus: 'In Delivery', remarks: '' },
+    { ...base(), number: 'PO-4500690', projectId: orion.id, workstreamId: wOrionPcb.id, supplierId: nova.id, issueDate: d(-65), amount: 11200, currency: 'USD', expectedDelivery: d(-5), actualDelivery: '', status: 'Issued', supplierConfirmation: 'Revised Schedule', hardwareDelivery: 'In Fabrication', deliveryStatus: 'In Fabrication', remarks: 'PCB fabrication slipped due to laminate shortage.' },
     { ...base(), number: 'PO-4500650', projectId: lynx.id, workstreamId: wLynxSock.id, supplierId: meridian.id, issueDate: d(-160), amount: 2900, currency: 'USD', expectedDelivery: d(-55), actualDelivery: d(-52), status: 'Delivered', supplierConfirmation: 'Confirmed', hardwareDelivery: 'Received & Inspected', deliveryStatus: 'Delivered', remarks: '' },
   ]
 
