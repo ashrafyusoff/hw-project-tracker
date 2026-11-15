@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Briefcase, ChevronDown, ChevronRight, ListChecks, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useTable } from '@/hooks/useTable'
+import { usePersistedState } from '@/hooks/usePersistedState'
 import {
   ACTIVE_PROJECT_STATUSES,
   NON_NPI_CATEGORIES,
+  NON_NPI_TASK_STATUSES,
   PRIORITIES,
   PROGRESS_STEPS,
   PROJECT_STATUSES,
-  TASK_STATUSES,
   isArchivedStatus,
   type Priority,
   type Project,
@@ -34,6 +35,7 @@ import { TaskForm } from '@/features/tasks/TaskForm'
 import { DeadlineBadge, isOverdueTask } from '@/features/tasks/TaskTable'
 import { createProject, deleteProject, emptyProject, updateProject, type ProjectInput } from '@/services/projectService'
 import { deleteTask, updateTask } from '@/services/taskService'
+import { loadSampleData } from '@/services/sampleData'
 import { formatDate, isPast, todayStr } from '@/utils/helpers'
 import { errorMessage } from '@/utils/validation'
 
@@ -42,32 +44,44 @@ const PROGRESS_OPTIONS = PROGRESS_STEPS.map((p) => ({ value: String(p), label: `
 const DAY = 86400000
 const toMs = (s: string) => new Date(s).getTime()
 
+/**
+ * Computes the lowest available running number `A-001`, `A-002`, ... across all existing
+ * (active AND archived) Non-NPI Work items. If an active Non-NPI Work item is deleted,
+ * its number is no longer in `db.projects` and is automatically reused; if it was archived,
+ * it remains in `db.projects` so its running number is never reused.
+ */
+export function getNextNonNpiRunningTag(allProjects: Project[], ignoreId?: string): string {
+  const used = new Set<number>()
+  for (const p of allProjects) {
+    if (!p.isNonNpi || p.id === ignoreId) continue
+    const match = p.code.match(/A-(\d+)\b/i)
+    if (match) {
+      const num = parseInt(match[1], 10)
+      if (!isNaN(num) && num > 0) used.add(num)
+    }
+  }
+  let n = 1
+  while (used.has(n)) n++
+  return `A-${String(n).padStart(3, '0')}`
+}
+
+export function formatCategoryHeader(p: Project): string {
+  const match = p.code.match(/A-\d{3,}/i)
+  const cat = p.nonNpiCategory || 'Ad-hoc Task'
+  if (match) return `${cat} ${match[0].toUpperCase()}`
+  return p.code || cat
+}
+
 export function NonNpiPage() {
   const projects = useTable<Project>('projects')
   const tasks = useTable<Task>('tasks')
 
-  const [tab, setTab] = useState<'main' | 'gantt'>('main')
-  const [search, setSearch] = useState('')
-  const [category, setCategory] = useState('')
-  const [priority, setPriority] = useState('')
-  const [status, setStatus] = useState('')
-
-  const [collapsedIds, setCollapsedIds] = useState<Record<string, boolean>>(() => {
-    try {
-      const raw = localStorage.getItem(COLLAPSED_KEY)
-      return raw ? JSON.parse(raw) : {}
-    } catch {
-      return {}
-    }
-  })
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(COLLAPSED_KEY, JSON.stringify(collapsedIds))
-    } catch {
-      // ignore storage errors
-    }
-  }, [collapsedIds])
+  const [tab, setTab] = usePersistedState<'main' | 'gantt'>('npi.nonNpi.tab', 'main')
+  const [search, setSearch] = usePersistedState<string>('npi.nonNpi.search', '')
+  const [category, setCategory] = usePersistedState<string>('npi.nonNpi.category', '')
+  const [priority, setPriority] = usePersistedState<string>('npi.nonNpi.priority', '')
+  const [status, setStatus] = usePersistedState<string>('npi.nonNpi.status', '')
+  const [collapsedIds, setCollapsedIds] = usePersistedState<Record<string, boolean>>(COLLAPSED_KEY, {})
 
   const [workModalOpen, setWorkModalOpen] = useState(false)
   const [editingWork, setEditingWork] = useState<Project | undefined>()
@@ -93,7 +107,7 @@ export function NonNpiPage() {
         const taskText = pTasks.map((t) => `${t.name} ${t.remarks}`).join(' ')
         return `${p.code} ${p.name} ${p.nonNpiCategory ?? ''} ${p.description} ${taskText}`.toLowerCase().includes(q)
       })
-      .sort((a, b) => (a.baselineDate || '9999').localeCompare(b.baselineDate || '9999'))
+      .sort((a, b) => a.code.localeCompare(b.code))
   }, [projects, tasks, search, category, priority, status])
 
   if (!projects || !tasks) return <Loading />
@@ -107,7 +121,7 @@ export function NonNpiPage() {
       <div className="flex items-center justify-between border-b border-slate-200">
         <div className="flex">
           <button className={tabCls(tab === 'main')} onClick={() => setTab('main')}>
-            Work, Tasks & Gantt <span className="ml-1 text-xs text-slate-400">{nonNpiWorks.length}</span>
+            Work & Tasks <span className="ml-1 text-xs text-slate-400">{nonNpiWorks.length}</span>
           </button>
           <button className={tabCls(tab === 'gantt')} onClick={() => setTab('gantt')}>
             Gantt Chart View
@@ -118,7 +132,7 @@ export function NonNpiPage() {
       {/* Filters & Actions */}
       <div className="flex flex-wrap items-center gap-2">
         <Input
-          placeholder="Search DOE, web dev, improvement, tasks…"
+          placeholder="Search category, A-001, title, tasks…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="!w-72"
@@ -160,21 +174,27 @@ export function NonNpiPage() {
           {nonNpiWorks.length === 0 ? (
             <EmptyState
               title="No Non-NPI work items yet"
-              hint='Click "Create Non-NPI Work" to track ad-hoc tasks, DOEs, web development, or continuous improvement projects.'
+              hint='Click "Create Non-NPI Work" to track ad-hoc tasks, DOEs, web development, or continuous improvement projects, or load sample data.'
+              action={
+                <div className="flex gap-2">
+                  <Button variant="primary" onClick={() => { setEditingWork(undefined); setWorkModalOpen(true) }}>
+                    Create Non-NPI Work
+                  </Button>
+                  <Button onClick={() => loadSampleData()}>Load Sample Data</Button>
+                </div>
+              }
             />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="text-xs text-slate-600 text-left bg-slate-100">
-                  <tr>
-                    <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Work ID / Task Branch</th>
+                  <tr className="whitespace-nowrap">
                     <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Category</th>
-                    <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Title / Description</th>
+                    <th className="px-3 py-2.5 font-semibold whitespace-nowrap w-56 max-w-[220px]">Title / Description</th>
                     <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Priority</th>
                     <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Status</th>
                     <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Progress</th>
                     <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Start → Target / Due</th>
-                    <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Tasks</th>
                     <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Actions</th>
                   </tr>
                 </thead>
@@ -208,17 +228,24 @@ export function NonNpiPage() {
         </Card>
       )}
 
-      {/* Non-NPI Gantt Chart shown on both 'main' and 'gantt' tabs */}
-      {nonNpiWorks.length > 0 && (
+      {/* Second tab ONLY for Gantt Chart */}
+      {tab === 'gantt' && (
         <Card title="Non-NPI Work & Tasks — Master Gantt Chart">
-          <NonNpiGanttChart works={nonNpiWorks} tasks={tasks} />
+          {nonNpiWorks.length === 0 ? (
+            <EmptyState
+              title="No Non-NPI work items to display"
+              hint="Create a Non-NPI work item or clear filters to view the Gantt chart."
+            />
+          ) : (
+            <NonNpiGanttChart works={nonNpiWorks} tasks={tasks} />
+          )}
         </Card>
       )}
 
       <NonNpiWorkModal
         open={workModalOpen}
         project={editingWork}
-        existingCount={(projects ?? []).filter((p) => !!p.isNonNpi).length}
+        allProjects={projects}
         onClose={() => setWorkModalOpen(false)}
       />
 
@@ -226,6 +253,7 @@ export function NonNpiPage() {
         open={taskModalOpen}
         task={editingTask}
         defaultProjectId={taskProjectId}
+        nonNpiOnly
         onClose={() => { setTaskModalOpen(false); setEditingTask(undefined) }}
       />
 
@@ -237,7 +265,7 @@ export function NonNpiPage() {
           if (!deletingWork) return
           try { await deleteProject(deletingWork.id); setDeletingWork(undefined) } catch (e) { setError(errorMessage(e)); setDeletingWork(undefined) }
         }}
-        message={<>Delete <b>{deletingWork?.code} – {deletingWork?.name}</b> and all tasks linked to it?</>}
+        message={<>Delete <b>{deletingWork ? formatCategoryHeader(deletingWork) : ''} – {deletingWork?.name}</b> and all tasks linked to it? Its running number will become available for reuse.</>}
       />
 
       <ConfirmDialog
@@ -253,7 +281,7 @@ export function NonNpiPage() {
 
       <ConfirmDialog
         open={!!archivingWork}
-        title={`Move ${archivingWork?.project.code ?? ''} to Archived?`}
+        title={`Move ${archivingWork ? formatCategoryHeader(archivingWork.project) : ''} to Archived?`}
         confirmLabel={`Confirm & Archive (${archivingWork?.nextStatus ?? ''})`}
         onCancel={() => setArchivingWork(undefined)}
         onConfirm={async () => {
@@ -268,7 +296,7 @@ export function NonNpiPage() {
         }}
         message={
           <>
-            Changing the status of <b>{archivingWork?.project.code} ({archivingWork?.project.name})</b> to <b>{archivingWork?.nextStatus}</b> will move it to the <b>Archived</b> tab. <b>This action is non-returnable.</b> Proceed?
+            Changing the status of <b>{archivingWork ? formatCategoryHeader(archivingWork.project) : ''} ({archivingWork?.project.name})</b> to <b>{archivingWork?.nextStatus}</b> will move it to the <b>Archived</b> tab and lock its running number permanently. <b>This action is non-returnable.</b> Proceed?
           </>
         }
       />
@@ -301,11 +329,22 @@ function NonNpiWorkGroup({
   onDeleteTask: (t: Task) => void
   onError: (msg: string) => void
 }) {
+  const categoryLabel = formatCategoryHeader(p)
   return (
     <>
       <tr className="border-t border-slate-200 bg-white hover:bg-slate-50 font-medium">
         <td className="px-3 py-2.5 whitespace-nowrap">
           <div className="flex items-center gap-1.5">
+            {/* Add Task button placed on the left inside the Category column to save space */}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="!h-6 !px-1.5 text-[11px] text-primary border border-primary/25 bg-primary-soft/50 hover:bg-primary-soft"
+              onClick={onAddTask}
+              title="Add task to this Non-NPI work"
+            >
+              <Plus className="h-3 w-3" /> Task
+            </Button>
             <button
               type="button"
               onClick={onToggleCollapse}
@@ -314,15 +353,13 @@ function NonNpiWorkGroup({
             >
               {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </button>
-            <Briefcase className="h-3.5 w-3.5 text-primary shrink-0" />
-            <span className="font-bold text-primary">{p.code}</span>
+            <Badge color="violet">{categoryLabel}</Badge>
             <span className="text-[11px] font-normal text-slate-400">({tasks.length})</span>
           </div>
         </td>
-        <td className="px-3"><Badge color="violet">{p.nonNpiCategory || 'Ad-hoc Task'}</Badge></td>
-        <td className="px-3">
-          <div className="font-semibold text-slate-900">{p.name}</div>
-          {p.description && <div className="text-xs font-normal text-slate-500 truncate max-w-xs">{p.description}</div>}
+        <td className="px-3 w-56 max-w-[220px]">
+          <div className="font-semibold text-slate-900 truncate max-w-[210px]" title={p.name}>{p.name}</div>
+          {p.description && <div className="text-xs font-normal text-slate-500 truncate max-w-[210px]" title={p.description}>{p.description}</div>}
         </td>
         <td className="px-3">
           <InlineStatusSelect
@@ -359,11 +396,6 @@ function NonNpiWorkGroup({
           {formatDate(p.startDate)} → <span className="font-medium text-slate-800">{formatDate(p.baselineDate)}</span>
         </td>
         <td className="px-3 whitespace-nowrap">
-          <Button size="sm" variant="ghost" className="!py-1 !px-2 text-xs text-primary" onClick={onAddTask}>
-            <Plus className="h-3 w-3" /> Add Task
-          </Button>
-        </td>
-        <td className="px-3 whitespace-nowrap">
           <div className="flex gap-1">
             <Button variant="ghost" size="sm" aria-label="Edit Non-NPI work" onClick={onEditWork}>
               <Pencil className="h-3.5 w-3.5" />
@@ -380,17 +412,23 @@ function NonNpiWorkGroup({
         const isLast = idx === tasks.length - 1
         return (
           <tr key={t.id} className="border-t border-slate-100 bg-slate-50/75 hover:bg-blue-50/40 text-xs">
-            <td className="pl-7 pr-2 py-2 whitespace-nowrap text-slate-700">
+            <td className="pl-16 pr-2 py-2 whitespace-nowrap text-slate-500">
               <span className="inline-flex items-center gap-1.5">
                 <span className="font-mono text-slate-400 font-bold text-sm leading-none">{isLast ? '└─' : '├─'}</span>
                 <ListChecks className="h-3.5 w-3.5 text-sky-600 shrink-0" />
-                <button onClick={() => onEditTask(t)} className="font-semibold text-slate-800 hover:text-primary hover:underline text-left">
-                  {t.name}
-                </button>
+                <span className="text-[11px] font-medium text-slate-400">Task</span>
               </span>
             </td>
-            <td className="px-3 py-2 text-slate-400">Task</td>
-            <td className="px-3 py-2 text-slate-500 truncate max-w-xs">{t.remarks || '—'}</td>
+            <td className="px-3 py-2 w-56 max-w-[220px]">
+              <button
+                onClick={() => onEditTask(t)}
+                className="font-semibold text-slate-800 hover:text-primary hover:underline text-left block truncate max-w-[210px]"
+                title={t.name}
+              >
+                {t.name}
+              </button>
+              {t.remarks && <div className="text-[11px] text-slate-500 truncate max-w-[210px]" title={t.remarks}>{t.remarks}</div>}
+            </td>
             <td className="px-3 py-2">
               <InlineStatusSelect
                 value={t.priority}
@@ -403,7 +441,7 @@ function NonNpiWorkGroup({
             <td className="px-3 py-2">
               <InlineStatusSelect
                 value={t.status}
-                options={TASK_STATUSES}
+                options={NON_NPI_TASK_STATUSES}
                 onChange={async (next) => {
                   try { await updateTask(t.id, { ...t, status: next as TaskStatus }) } catch (e) { onError(errorMessage(e)) }
                 }}
@@ -416,7 +454,6 @@ function NonNpiWorkGroup({
               </span>
               <span className="ml-1.5"><DeadlineBadge task={t} /></span>
             </td>
-            <td className="px-3 py-2 text-slate-400">Synced to Calendar</td>
             <td className="px-3 py-2 whitespace-nowrap">
               <div className="flex gap-1">
                 <Button variant="ghost" size="sm" title="Edit task" onClick={() => onEditTask(t)}>
@@ -437,12 +474,12 @@ function NonNpiWorkGroup({
 function NonNpiWorkModal({
   open,
   project,
-  existingCount,
+  allProjects,
   onClose,
 }: {
   open: boolean
   project?: Project
-  existingCount: number
+  allProjects: Project[]
   onClose: () => void
 }) {
   return (
@@ -450,7 +487,7 @@ function NonNpiWorkModal({
       <NonNpiWorkFormBody
         key={`${open ? 'open' : 'closed'}-${project?.id ?? 'new'}-${project?.updatedAt ?? ''}`}
         project={project}
-        existingCount={existingCount}
+        allProjects={allProjects}
         onClose={onClose}
       />
     </Modal>
@@ -459,14 +496,21 @@ function NonNpiWorkModal({
 
 function NonNpiWorkFormBody({
   project,
-  existingCount,
+  allProjects,
   onClose,
 }: {
   project?: Project
-  existingCount: number
+  allProjects: Project[]
   onClose: () => void
 }) {
-  const defaultCode = `WORK-${String(existingCount + 1).padStart(2, '0')}`
+  const runningTag = useMemo(() => {
+    if (project) {
+      const existingMatch = project.code.match(/A-\d{3,}/i)
+      if (existingMatch) return existingMatch[0].toUpperCase()
+    }
+    return getNextNonNpiRunningTag(allProjects, project?.id)
+  }, [project, allProjects])
+
   const initialCat = project?.nonNpiCategory || 'DOE'
   const isInitialPreset = NON_NPI_CATEGORIES.includes(initialCat as (typeof NON_NPI_CATEGORIES)[number])
 
@@ -482,7 +526,6 @@ function NonNpiWorkFormBody({
         }
       : {
           ...emptyProject(),
-          code: defaultCode,
           isNonNpi: true,
           nonNpiCategory: 'DOE',
           priority: 'Medium',
@@ -495,22 +538,30 @@ function NonNpiWorkFormBody({
   const set = <K extends keyof ProjectInput>(k: K, v: ProjectInput[K]) => setForm((f) => ({ ...f, [k]: v }))
 
   const roundedProgress = String(Math.round((form.progress || 0) / 10) * 10)
+  const previewCategory = categorySelect === 'Others' ? customCategory.trim() || 'Others' : categorySelect
+  const generatedHeader = `${previewCategory} ${runningTag}`
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
+    if (categorySelect === 'Others' && !customCategory.trim()) {
+      setError('Please specify the category name for "Others".')
+      return
+    }
     if (!form.name.trim()) {
       setError('Work / Project Title is required.')
       return
     }
-    const finalCategory = categorySelect === 'Others' ? customCategory.trim() || 'Others' : categorySelect
+    const finalCategory = categorySelect === 'Others' ? customCategory.trim() : categorySelect
+    const finalCode = `${finalCategory} ${runningTag}`
     setSaving(true)
     try {
       const payload: ProjectInput = {
         ...form,
+        code: finalCode,
         isNonNpi: true,
         nonNpiCategory: finalCategory,
-        deviceName: finalCategory,
+        deviceName: finalCode,
         name: form.name.trim(),
         startDate: form.startDate || todayStr(),
       }
@@ -528,10 +579,7 @@ function NonNpiWorkFormBody({
     <form onSubmit={submit} className="space-y-4">
       <FormError message={error} />
       <div className="grid sm:grid-cols-2 gap-3">
-        <Field label="Work ID / Reference" required>
-          <Input value={form.code} onChange={(e) => set('code', e.target.value)} placeholder="e.g. DOE-01, WEB-01" />
-        </Field>
-        <Field label="Category" required>
+        <Field label={`Category (Auto ID: ${generatedHeader})`} required>
           <Select
             options={NON_NPI_CATEGORIES}
             value={categorySelect}
@@ -593,11 +641,12 @@ function NonNpiGanttChart({ works, tasks }: { works: Project[]; tasks: Task[] })
       const wStart = w.startDate || w.createdAt?.slice(0, 10) || today
       const wEndRaw = w.baselineDate || wStart
       const wEnd = wEndRaw >= wStart ? wEndRaw : wStart
+      const header = formatCategoryHeader(w)
       list.push({
         id: `work-${w.id}`,
         kind: 'work',
-        label: `${w.code} · ${w.name}`,
-        sublabel: `${w.nonNpiCategory || 'Non-NPI'} · Priority: ${w.priority}`,
+        label: `${header} · ${w.name}`,
+        sublabel: `Priority: ${w.priority}`,
         startDate: wStart,
         endDate: wEnd,
         status: w.status,
@@ -669,7 +718,7 @@ function NonNpiGanttChart({ works, tasks }: { works: Project[]; tasks: Task[] })
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
         <div className="min-w-[860px]">
           <div className="flex border-b border-slate-200 bg-slate-100 text-xs font-semibold text-slate-700">
-            <div className="w-72 shrink-0 px-3 py-2 border-r border-slate-200">Non-NPI Work / Task</div>
+            <div className="w-72 shrink-0 px-3 py-2 border-r border-slate-200">Category / Task</div>
             <div className="w-40 shrink-0 px-3 py-2 border-r border-slate-200">Status / Progress</div>
             <div className="relative flex-1 h-8">
               {ticks.map((t, idx) => (

@@ -1,13 +1,13 @@
 import { NavLink } from 'react-router-dom'
-import { Archive, BarChart3, Briefcase, CalendarCheck, ChevronsLeft, ChevronsRight, FolderKanban, ListChecks, Settings, Truck } from 'lucide-react'
+import { Archive, BarChart3, Briefcase, ChevronsLeft, ChevronsRight, FolderKanban, ListChecks, Settings, Truck } from 'lucide-react'
 import { cn } from '@/utils/helpers'
 
 export const NAV_ITEMS = [
   { to: '/', label: 'Overview', icon: BarChart3, end: true },
   { to: '/projects', label: 'Projects', icon: FolderKanban },
   { to: '/tasks', label: 'Tasks', icon: ListChecks },
-  { to: '/non-npi', label: 'Non-NPI Work', icon: Briefcase },
   { to: '/suppliers', label: 'Suppliers', icon: Truck },
+  { to: '/non-npi', label: 'Non-NPI Work', icon: Briefcase },
   { to: '/archived', label: 'Archived', icon: Archive },
   { to: '/settings', label: 'Settings', icon: Settings },
 ]
@@ -16,10 +16,10 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
   return (
     <aside className={cn('fixed inset-y-0 left-0 z-30 flex flex-col border-r border-slate-200 bg-white transition-[width] duration-150', collapsed ? 'w-16' : 'w-60')}>
       <div className="flex h-14 items-center gap-2 px-4 border-b border-slate-200">
-        <CalendarCheck className="h-6 w-6 text-primary shrink-0" />
+        <img src="/favicon.svg" alt="HW Project Tracker" className="h-6 w-6 rounded shrink-0" />
         {!collapsed && (
           <div className="min-w-0">
-            <span className="block font-semibold text-slate-900 truncate leading-tight">NPI Project Manager</span>
+            <span className="block font-semibold text-slate-900 truncate leading-tight">HW Project Tracker</span>
             <span className="block text-[10px] font-medium text-slate-400">by Pacca1214</span>
           </div>
         )}

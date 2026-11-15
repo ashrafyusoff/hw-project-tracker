@@ -1,14 +1,68 @@
 import { db } from '@/database/db'
-import type { Supplier } from '@/types'
+import type { Supplier, SupplierContact } from '@/types'
 import { newId, nowIso } from '@/utils/helpers'
 import { ValidationError, checkEmail, requireText } from '@/utils/validation'
 import { logActivity } from './activityService'
 
 export type SupplierInput = Omit<Supplier, 'id' | 'createdAt' | 'updatedAt' | 'isSample'>
 
+export function getSupplierContacts(s: Partial<Supplier>): SupplierContact[] {
+  if (s.contacts && s.contacts.length > 0) {
+    return s.contacts
+  }
+  if (s.contactPerson || s.phone || s.email) {
+    return [
+      {
+        contactPerson: s.contactPerson ?? '',
+        phone: s.phone ?? '',
+        email: s.email ?? '',
+      },
+    ]
+  }
+  return []
+}
+
+function normalizeContacts(input: SupplierInput): {
+  contacts: SupplierContact[]
+  contactPerson: string
+  phone: string
+  email: string
+} {
+  const raw = input.contacts && input.contacts.length > 0
+    ? input.contacts
+    : []
+
+  const cleaned = raw
+    .map((c) => ({
+      contactPerson: (c.contactPerson ?? '').trim(),
+      phone: (c.phone ?? '').trim(),
+      email: (c.email ?? '').trim(),
+    }))
+    .filter((c) => c.contactPerson || c.phone || c.email)
+
+  if (cleaned.length === 0 && (input.contactPerson || input.phone || input.email)) {
+    cleaned.push({
+      contactPerson: (input.contactPerson ?? '').trim(),
+      phone: (input.phone ?? '').trim(),
+      email: (input.email ?? '').trim(),
+    })
+  }
+
+  const first = cleaned[0] ?? { contactPerson: '', phone: '', email: '' }
+  return {
+    contacts: cleaned,
+    contactPerson: first.contactPerson,
+    phone: first.phone,
+    email: first.email,
+  }
+}
+
 function validate(i: SupplierInput) {
   requireText(i.name, 'Supplier name')
-  checkEmail(i.email.trim())
+  const { contacts } = normalizeContacts(i)
+  for (const c of contacts) {
+    checkEmail(c.email)
+  }
 }
 
 async function assertNameUnique(name: string, ignoreId?: string) {
@@ -19,10 +73,21 @@ async function assertNameUnique(name: string, ignoreId?: string) {
 export async function createSupplier(input: SupplierInput) {
   validate(input)
   await assertNameUnique(input.name)
+  const norm = normalizeContacts(input)
   const now = nowIso()
   const id = newId()
   await db.transaction('rw', db.suppliers, db.activityLogs, async () => {
-    await db.suppliers.add({ ...input, name: input.name.trim(), id, createdAt: now, updatedAt: now })
+    await db.suppliers.add({
+      ...input,
+      name: input.name.trim(),
+      contacts: norm.contacts,
+      contactPerson: norm.contactPerson,
+      phone: norm.phone,
+      email: norm.email,
+      id,
+      createdAt: now,
+      updatedAt: now,
+    })
     await logActivity('Supplier', id, '', 'Created', `Supplier ${input.name} added`)
   })
 }
@@ -30,8 +95,17 @@ export async function createSupplier(input: SupplierInput) {
 export async function updateSupplier(id: string, input: SupplierInput) {
   validate(input)
   await assertNameUnique(input.name, id)
+  const norm = normalizeContacts(input)
   await db.transaction('rw', db.suppliers, db.activityLogs, async () => {
-    await db.suppliers.update(id, { ...input, name: input.name.trim(), updatedAt: nowIso() })
+    await db.suppliers.update(id, {
+      ...input,
+      name: input.name.trim(),
+      contacts: norm.contacts,
+      contactPerson: norm.contactPerson,
+      phone: norm.phone,
+      email: norm.email,
+      updatedAt: nowIso(),
+    })
     await logActivity('Supplier', id, '', 'Updated', `Supplier ${input.name} updated`)
   })
 }
@@ -72,5 +146,12 @@ export async function unlinkSupplierFromProject(projectId: string, supplierId: s
 }
 
 export const emptySupplier = (): SupplierInput => ({
-  name: '', contactPerson: '', email: '', phone: '', location: '', category: 'Other', remarks: '',
+  name: '',
+  contactPerson: '',
+  email: '',
+  phone: '',
+  contacts: [{ contactPerson: '', phone: '', email: '' }],
+  location: '',
+  category: 'PCB',
+  remarks: '',
 })

@@ -7,27 +7,103 @@ import { logActivity } from './activityService'
 // Dates are relative to today so the dashboard always looks current.
 
 export async function hasSampleData(): Promise<boolean> {
-  return (await db.projects.filter((p) => !!p.isSample).count()) > 0
+  const hasNonNpi = (await db.projects.filter((p) => !!p.isSample && !!p.isNonNpi && /A-\d{3}/.test(p.code)).count()) > 0
+  const hasMultiContactSupplier = (await db.suppliers.filter((s) => !!s.isSample && Array.isArray(s.contacts) && s.contacts.length > 1).count()) > 0
+  return hasNonNpi && hasMultiContactSupplier
 }
 
 export async function loadSampleData() {
+  await clearSampleData()
   const now = nowIso()
   const base = () => ({ id: newId(), isSample: true, createdAt: now, updatedAt: now })
 
-  // ---------- Suppliers ----------
-  const nova = { ...base(), name: 'Nova Circuits Pte Ltd', contactPerson: 'Daniel Tan', email: 'daniel.tan@novacircuits.example', phone: '+65 6123 4501', location: 'Singapore', category: 'PCB Fabrication', remarks: 'Preferred vendor for high-layer-count load boards.' }
-  const meridian = { ...base(), name: 'Meridian Socket Technologies', contactPerson: 'Lisa Wong', email: 'lisa.wong@meridiansocket.example', phone: '+60 4 555 8820', location: 'Penang, Malaysia', category: 'Test Socket', remarks: 'Pogo-pin and elastomer sockets.' }
-  const apex = { ...base(), name: 'Apex Handler Solutions', contactPerson: 'Kenji Mori', email: 'k.mori@apexhandler.example', phone: '+81 3 5550 1188', location: 'Yokohama, Japan', category: 'Handler Kit', remarks: 'Change kits for pick-and-place handlers.' }
-  const bright = { ...base(), name: 'Brightline Components Co.', contactPerson: 'Priya Nair', email: 'priya@brightline.example', phone: '+65 6234 7712', location: 'Singapore', category: 'Components', remarks: 'Passives and connectors, short lead times.' }
-  const kestrel = { ...base(), name: 'Kestrel Assembly Services', contactPerson: 'Marcus Lee', email: 'marcus.lee@kestrelassy.example', phone: '+60 3 7788 9900', location: 'Selangor, Malaysia', category: 'Assembly', remarks: 'PCBA assembly and rework.' }
+  // ---------- Suppliers (with multiple contacts & Deliverable-aligned categories) ----------
+  const nova = {
+    ...base(),
+    name: 'Nova Circuits Pte Ltd',
+    contactPerson: 'Daniel Tan',
+    email: 'daniel.tan@novacircuits.example',
+    phone: '+65 6123 4501',
+    contacts: [
+      { contactPerson: 'Daniel Tan (Sales Lead)', phone: '+65 6123 4501', email: 'daniel.tan@novacircuits.example' },
+      { contactPerson: 'Rachel Lim (CAM Engineer)', phone: '+65 6123 4508', email: 'rachel.lim@novacircuits.example' },
+      { contactPerson: 'Kevin Goh (Logistics)', phone: '+65 6123 4515', email: 'kevin.goh@novacircuits.example' },
+    ],
+    location: 'Singapore',
+    category: 'PCB',
+    remarks: 'Preferred vendor for high-layer-count load boards.',
+  }
+  const meridian = {
+    ...base(),
+    name: 'Meridian Socket Technologies',
+    contactPerson: 'Lisa Wong',
+    email: 'lisa.wong@meridiansocket.example',
+    phone: '+60 4 555 8820',
+    contacts: [
+      { contactPerson: 'Lisa Wong (Account Manager)', phone: '+60 4 555 8820', email: 'lisa.wong@meridiansocket.example' },
+      { contactPerson: 'Ahmad Faiz (Mechanical Design)', phone: '+60 4 555 8829', email: 'ahmad.faiz@meridiansocket.example' },
+    ],
+    location: 'Penang, Malaysia',
+    category: 'Socket',
+    remarks: 'Pogo-pin and elastomer sockets.',
+  }
+  const apex = {
+    ...base(),
+    name: 'Apex Handler Solutions',
+    contactPerson: 'Kenji Mori',
+    email: 'k.mori@apexhandler.example',
+    phone: '+81 3 5550 1188',
+    contacts: [
+      { contactPerson: 'Kenji Mori (Key Account)', phone: '+81 3 5550 1188', email: 'k.mori@apexhandler.example' },
+      { contactPerson: 'Yuki Sato (Field Application)', phone: '+81 3 5550 1195', email: 'y.sato@apexhandler.example' },
+    ],
+    location: 'Yokohama, Japan',
+    category: 'Handler Kit',
+    remarks: 'Change kits for pick-and-place handlers.',
+  }
+  const bright = {
+    ...base(),
+    name: 'Brightline Components Co.',
+    contactPerson: 'Priya Nair',
+    email: 'priya@brightline.example',
+    phone: '+65 6234 7712',
+    contacts: [
+      { contactPerson: 'Priya Nair', phone: '+65 6234 7712', email: 'priya@brightline.example' },
+      { contactPerson: 'Jason Teo (Inside Sales)', phone: '+65 6234 7719', email: 'jason.teo@brightline.example' },
+    ],
+    location: 'Singapore',
+    category: 'Others (Components)',
+    remarks: 'Passives and connectors, short lead times.',
+  }
+  const kestrel = {
+    ...base(),
+    name: 'Kestrel Assembly Services',
+    contactPerson: 'Marcus Lee',
+    email: 'marcus.lee@kestrelassy.example',
+    phone: '+60 3 7788 9900',
+    contacts: [
+      { contactPerson: 'Marcus Lee (Operations)', phone: '+60 3 7788 9900', email: 'marcus.lee@kestrelassy.example' },
+      { contactPerson: 'Siti Aminah (QA Lead)', phone: '+60 3 7788 9912', email: 'siti.aminah@kestrelassy.example' },
+    ],
+    location: 'Selangor, Malaysia',
+    category: 'Others (PCBA Assembly)',
+    remarks: 'PCBA assembly and rework.',
+  }
   const suppliers = [nova, meridian, apex, bright, kestrel]
 
-  // ---------- Projects ----------
+  // ---------- Projects (NPI / HRS + Non-NPI Work across different categories) ----------
   const falcon = { ...base(), code: '240101', name: 'FX7200 PMIC', hwType: 'FT' as const, deviceName: 'FX7200 PMIC', atePlatform: 'Advantest V93000', description: 'Load board and socket for final test of the FX7200 multi-rail PMIC.', objectives: '', priority: 'High' as const, status: 'In Progress' as const, startDate: d(-60), baselineDate: d(45), revisedDate: '', actualDate: '', progress: 60, remarks: '' }
   const orion = { ...base(), code: '240102', name: 'OR5G-200', hwType: 'FT' as const, deviceName: 'OR5G-200', atePlatform: 'Teradyne UltraFLEX', description: 'RF test hardware including a 24-layer load board and handler kit.', objectives: '', priority: 'Critical' as const, status: 'Delayed' as const, startDate: d(-90), baselineDate: d(30), revisedDate: '', actualDate: '', progress: 40, remarks: '' }
   const atlas = { ...base(), code: '240103', name: 'AT32M3', hwType: 'WT' as const, deviceName: 'AT32M3', atePlatform: 'Teradyne J750', description: 'Hardware for a new 32-bit microcontroller family.', objectives: '', priority: 'Medium' as const, status: 'Planning' as const, startDate: d(0), baselineDate: d(120), revisedDate: '', actualDate: '', progress: 10, remarks: '' }
   const lynx = { ...base(), code: '239804', name: 'LX-110', hwType: 'Eng' as const, deviceName: 'LX-110', atePlatform: 'Advantest V93000', description: 'Sensor hub test hardware, now in production.', objectives: '', priority: 'Low' as const, status: 'Completed' as const, startDate: d(-200), baselineDate: d(-40), revisedDate: '', actualDate: '', progress: 100, remarks: '' }
-  const projects = [falcon, orion, atlas, lynx]
+
+  // Non-NPI Work Sample Items across different categories (DOE, Web Development, Process Improvement, Automation / Tooling)
+  const doeWork = { ...base(), code: 'DOE A-001', name: 'Pogo Pin Contact Resistance & Cleaning Frequency DOE', isNonNpi: true, nonNpiCategory: 'DOE', hwType: 'FT' as const, deviceName: 'DOE A-001', atePlatform: '', description: 'Evaluate 3 pogo-pin tip geometries and laser vs. brush cleaning intervals across 50k touchdowns.', objectives: '', priority: 'High' as const, status: 'In Progress' as const, startDate: d(-14), baselineDate: d(18), revisedDate: '', actualDate: '', progress: 60, remarks: '' }
+  const webWork = { ...base(), code: 'Web Development A-002', name: 'NPI Hardware & Lab Inventory Web Portal', isNonNpi: true, nonNpiCategory: 'Web Development', hwType: 'FT' as const, deviceName: 'Web Development A-002', atePlatform: '', description: 'Internal web dashboard for tracking load board storage racks, socket spare counts, and calibration dates.', objectives: '', priority: 'Medium' as const, status: 'In Progress' as const, startDate: d(-21), baselineDate: d(25), revisedDate: '', actualDate: '', progress: 50, remarks: '' }
+  const impWork = { ...base(), code: 'Process Improvement A-003', name: 'Standardize PCB Design Rule Check (DRC) Checklist', isNonNpi: true, nonNpiCategory: 'Process Improvement', hwType: 'FT' as const, deviceName: 'Process Improvement A-003', atePlatform: '', description: 'Unify V93000 and UltraFLEX schematic & layout review checklist to cut fab respins.', objectives: '', priority: 'Critical' as const, status: 'Delayed' as const, startDate: d(-30), baselineDate: d(5), revisedDate: '', actualDate: '', progress: 40, remarks: '' }
+  const autoWork = { ...base(), code: 'Automation / Tooling A-004', name: 'Automated Gerber & Pin-Map Verification Script', isNonNpi: true, nonNpiCategory: 'Automation / Tooling', hwType: 'FT' as const, deviceName: 'Automation / Tooling A-004', atePlatform: '', description: 'Python utility to cross-check netlist pin-maps against socket drawing coordinates automatically.', objectives: '', priority: 'Low' as const, status: 'Planning' as const, startDate: d(-5), baselineDate: d(35), revisedDate: '', actualDate: '', progress: 20, remarks: '' }
+
+  const projects = [falcon, orion, atlas, lynx, doeWork, webWork, impWork, autoWork]
 
   // ---------- Deliverables ----------
   const ws = (projectId: string, category: 'PCB' | 'Socket' | 'Handler Kit' | 'Stiffener' | 'Probe Card' | 'Probe Head' | 'Others', mpn: string, supplierId: string, status: 'Not Started' | 'In Progress' | 'On Hold' | 'Delayed' | 'Completed', progress: number) =>
@@ -63,7 +139,13 @@ export async function loadSampleData() {
   const t7 = task(orion.id, wOrionStiff.id, 'Book stiffener slot with Kestrel', 'Me', kestrel.id, 5, 20, 'Medium', 'Not Started', 0)
   const t8 = task(atlas.id, wAtlasPcb.id, 'Define interface board requirements', 'Me', '', 10, 25, 'Medium', 'Not Started', 0)
   const t9 = task(lynx.id, wLynxPcb.id, 'Hand over hardware documentation', 'Me', '', -60, -45, 'Low', 'Completed', 100)
-  const tasks = [t1, t2, t3, t4, t5, t6, t7, t8, t9]
+  // Sample Non-NPI tasks (connected to main Workweek Calendar & This Week Activities)
+  const t10 = task(doeWork.id, '', 'Collect baseline CRes data across 3 socket sites', 'Me', '', -10, 1, 'High', 'In Progress', 60)
+  const t11 = task(doeWork.id, '', 'Analyze 25k insertion wear microscope images', 'Me', '', 0, 7, 'Medium', 'Not Started', 0)
+  const t12 = task(webWork.id, '', 'Build UI layout & database schema for rack tracker', 'Me', '', -12, 3, 'Medium', 'In Progress', 50)
+  const t13 = task(impWork.id, '', 'Consolidate high-speed RF layout rules from vendors', 'Me', '', -14, -1, 'Critical', 'Waiting for Supplier', 40)
+  const t14 = task(autoWork.id, '', 'Write parser for Cadence Allegro netlist export', 'Me', '', -2, 10, 'Low', 'In Progress', 20)
+  const tasks = [t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14]
 
   // ---------- Milestones ----------
   type MS = 'Not Started' | 'In Progress' | 'Completed' | 'Delayed'

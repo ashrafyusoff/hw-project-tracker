@@ -36,12 +36,19 @@ export const WORKSTREAM_STATUSES = ['Not Started', 'In Progress', 'On Hold', 'De
 export type WorkstreamStatus = (typeof WORKSTREAM_STATUSES)[number]
 
 export const TASK_STATUSES = ['Not Started', 'In Progress', 'Waiting for Supplier', 'Under Review', 'Completed', 'Cancelled'] as const
-export type TaskStatus = (typeof TASK_STATUSES)[number]
+export const NON_NPI_TASK_STATUSES = ['Not Started', 'In Progress', 'On Hold', 'Completed', 'Cancelled'] as const
+export type TaskStatus = (typeof TASK_STATUSES)[number] | (typeof NON_NPI_TASK_STATUSES)[number]
 
 export const MILESTONE_STATUSES = ['Not Started', 'In Progress', 'Completed', 'Delayed'] as const
 export type MilestoneStatus = (typeof MILESTONE_STATUSES)[number]
 
-export const SUPPLIER_CATEGORIES = ['PCB Fabrication', 'Test Socket', 'Handler Kit', 'Components', 'Assembly', 'Other'] as const
+export const SUPPLIER_CATEGORIES = ['PCB', 'Socket', 'Handler Kit', 'Stiffener', 'Probe Card', 'Probe Head', 'Others'] as const
+
+export interface SupplierContact {
+  contactPerson: string
+  phone: string
+  email: string
+}
 
 export interface Project extends BaseRecord {
   code: string
@@ -82,6 +89,7 @@ export interface Supplier extends BaseRecord {
   contactPerson: string
   email: string
   phone: string
+  contacts?: SupplierContact[]
   location: string
   category: string
   remarks: string

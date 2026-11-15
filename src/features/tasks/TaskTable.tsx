@@ -1,5 +1,5 @@
 import { Pencil, Trash2 } from 'lucide-react'
-import { PRIORITIES, TASK_STATUSES, type Priority, type Project, type Supplier, type Task, type TaskStatus, type Workstream } from '@/types'
+import { NON_NPI_TASK_STATUSES, PRIORITIES, TASK_STATUSES, type Priority, type Project, type Supplier, type Task, type TaskStatus, type Workstream } from '@/types'
 import { Badge, Button } from '@/components/ui'
 import { InlineStatusSelect } from '@/pages/ProjectsPage'
 import { updateTask } from '@/services/taskService'
@@ -67,7 +67,7 @@ export function TaskTable({ tasks, projects, workstreams, suppliers, showProject
               <td className="px-3">
                 <InlineStatusSelect
                   value={t.status}
-                  options={TASK_STATUSES}
+                  options={projects.find((p) => p.id === t.projectId)?.isNonNpi ? NON_NPI_TASK_STATUSES : TASK_STATUSES}
                   onChange={async (next) => {
                     await updateTask(t.id, { ...t, status: next as TaskStatus })
                   }}

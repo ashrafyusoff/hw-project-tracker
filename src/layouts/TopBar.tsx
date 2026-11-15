@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { ChevronRight, FolderKanban, ListChecks, Plus, Search, Settings, Truck } from 'lucide-react'
+import { ChevronRight, FolderKanban, ListChecks, Moon, Plus, Search, Settings, Sun, Truck } from 'lucide-react'
 import { useTable } from '@/hooks/useTable'
+import { useTheme } from '@/hooks/useTheme'
 import type { Project, Supplier, Task } from '@/types'
 import { NAV_ITEMS } from './Sidebar'
 import { Button } from '@/components/ui'
@@ -9,6 +10,7 @@ import { Button } from '@/components/ui'
 export function TopBar() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
+  const { isDark, toggleTheme } = useTheme()
   const projects = useTable<Project>('projects')
   const projectName = projects?.find((p) => pathname === `/projects/${p.id}`)?.name
   const suppliers = useTable<Supplier>('suppliers')
@@ -88,6 +90,17 @@ export function TopBar() {
         <span className="hidden md:block text-sm text-slate-500 whitespace-nowrap">
           {new Date().toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}
         </span>
+
+        <button
+          type="button"
+          onClick={toggleTheme}
+          title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          aria-label={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          className="rounded-md p-2 text-slate-500 hover:bg-slate-100"
+        >
+          {isDark ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4" />}
+        </button>
+
         <Link to="/settings" className="rounded-md p-2 text-slate-500 hover:bg-slate-100" aria-label="Settings"><Settings className="h-4 w-4" /></Link>
       </div>
     </header>

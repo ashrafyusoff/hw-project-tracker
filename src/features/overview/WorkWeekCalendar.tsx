@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { CheckSquare, ChevronLeft, ChevronRight, ClipboardPaste, Copy, Flag, GripVertical, Scissors, X } from 'lucide-react'
 import type { Milestone, Project, Task } from '@/types'
 import { Badge, Button, Card } from '@/components/ui'
+import { usePersistedState } from '@/hooks/usePersistedState'
 import { duplicateTaskToDate, rescheduleTask } from '@/services/taskService'
 import { duplicateMilestoneToDate, rescheduleMilestone } from '@/services/milestoneService'
 import { cn, todayStr } from '@/utils/helpers'
@@ -114,7 +115,7 @@ function taskCardStyle(t: Task, today: string): string {
   if (t.dueDate && t.dueDate < today) {
     return 'border-red-400 border-l-4 border-l-red-600 bg-red-100/90 text-red-950'
   }
-  if (t.status === 'Waiting for Supplier') {
+  if (t.status === 'Waiting for Supplier' || t.status === 'On Hold') {
     return 'border-amber-400 border-l-4 border-l-amber-500 bg-amber-100/90 text-amber-950'
   }
   if (t.status === 'Under Review') {
@@ -163,9 +164,9 @@ export function WorkWeekCalendar({
     setInternalMonday(next)
     onBaseMondayChange?.(next)
   }
-  // Customizable number of weeks (1..10, default 4)
-  const [weeksToShow, setWeeksToShow] = useState<number>(4)
-  const [filterProject, setFilterProject] = useState('')
+  // Customizable number of weeks (1..10, default 4) — saved in localStorage
+  const [weeksToShow, setWeeksToShow] = usePersistedState<number>('npi.calendar.weeksToShow', 4)
+  const [filterProject, setFilterProject] = usePersistedState<string>('npi.calendar.filterProject', '')
   const [dragOverCell, setDragOverCell] = useState<string>('')
   const [draggingId, setDraggingId] = useState<string>('')
   const [selectedItem, setSelectedItem] = useState<ItemRef | null>(null)
@@ -547,6 +548,9 @@ export function WorkWeekCalendar({
                   const bucket = itemsByDay.get(day.ymd)
                   const dayTasks = bucket?.tasks ?? []
                   const dayMilestones = bucket?.milestones ?? []
+                  const totalDayItems = dayMilestones.length + dayTasks.length
+                  const isTwoColMatrix = totalDayItems > 3
+                  const isScrollableDay = totalDayItems > 6
                   const isOver = dragOverCell === day.ymd
                   const isSelectedDay = selectedDay === day.ymd
                   return (
@@ -557,15 +561,18 @@ export function WorkWeekCalendar({
                       onDragLeave={() => setDragOverCell((c) => (c === day.ymd ? '' : c))}
                       onDrop={(e) => onDropOnDay(e, day.ymd, week.ww)}
                       className={cn(
-                        'min-h-[130px] p-2 border-r last:border-r-0 border-slate-200 flex flex-col gap-1.5 transition-colors',
+                        'min-h-[130px] p-2 border-r last:border-r-0 border-slate-200 flex flex-col gap-1.5 transition-colors min-w-0',
                         day.isToday ? 'bg-blue-50/50' : 'bg-white',
                         isSelectedDay && 'ring-1 ring-inset ring-slate-400',
                         isOver && 'bg-primary-soft ring-2 ring-inset ring-primary',
                       )}
                     >
-                      <div className="flex items-center justify-between text-xs mb-0.5 border-b border-slate-100 pb-1">
+                      <div className="flex items-center justify-between text-xs mb-0.5 border-b border-slate-100 pb-1 shrink-0">
                         <span className={cn('font-medium', day.isToday ? 'text-primary font-bold' : 'text-slate-600')}>
                           {day.dayLabel}
+                          {totalDayItems > 0 && (
+                            <span className="ml-1 text-[10px] font-normal text-slate-400">({totalDayItems})</span>
+                          )}
                         </span>
                         <div className="flex items-center gap-1">
                           {day.isToday && <Badge color="blue">Today</Badge>}
@@ -581,77 +588,87 @@ export function WorkWeekCalendar({
                         </div>
                       </div>
 
-                      {/* Milestones on this day */}
-                      {dayMilestones.map((m) => {
-                        const ref: ItemRef = { kind: 'milestone', id: m.id, name: m.name }
-                        const isCut = clipboard?.mode === 'cut' && clipboard.id === m.id
-                        const isSelected = selectedItem?.id === m.id
-                        return (
-                          <div
-                            key={m.id}
-                            draggable
-                            onDragStart={(e) => onDragStart(e, ref)}
-                            onDragEnd={onDragEnd}
-                            onClick={(e) => { e.stopPropagation(); setSelectedItem(ref); setSelectedDay(day.ymd); onEditMilestone?.(m) }}
-                            title={`Milestone: ${m.name}\nProject: ${projectCode(m.projectId)}\nTarget: ${m.targetDate} (${m.status})\nClick to edit`}
-                            className={cn(
-                              'group cursor-grab active:cursor-grabbing rounded border px-2 py-1.5 text-xs shadow-sm transition-all select-none',
-                              milestoneCardStyle(m, today),
-                              isSelected && 'ring-2 ring-primary',
-                              (draggingId === m.id || isCut) && 'opacity-45 border-dashed',
-                            )}
-                          >
-                            <div className="flex items-start gap-1">
-                              <GripVertical className="h-3.5 w-3.5 shrink-0 opacity-50 group-hover:opacity-90 mt-0.5" />
-                              <Flag className="h-3 w-3 shrink-0 mt-0.5" />
-                              <div className="min-w-0 flex-1">
-                                <p className="font-semibold truncate">{m.name}</p>
-                                <p className="text-[11px] opacity-80 truncate">{projectCode(m.projectId)} · Milestone</p>
-                              </div>
-                              <div className="hidden group-hover:flex items-center gap-0.5 shrink-0 bg-white/80 rounded px-1 py-0.5 shadow-sm" onClick={(e) => e.stopPropagation()}>
-                                <button onClick={() => handleCopy(ref)} title="Copy milestone" className="p-0.5 hover:text-primary"><Copy className="h-3 w-3" /></button>
-                                <button onClick={() => handleCut(ref)} title="Cut milestone to move" className="p-0.5 hover:text-primary"><Scissors className="h-3 w-3" /></button>
+                      {/* Items container: >3 items splits into a 2x3 matrix; >6 items caps height at 3 rows and scrolls */}
+                      <div
+                        className={cn(
+                          isTwoColMatrix ? 'grid grid-cols-2 gap-1.5 auto-rows-min' : 'flex flex-col gap-1.5',
+                          isScrollableDay && 'max-h-[168px] overflow-y-auto pr-0.5',
+                        )}
+                      >
+                        {/* Milestones on this day */}
+                        {dayMilestones.map((m) => {
+                          const ref: ItemRef = { kind: 'milestone', id: m.id, name: m.name }
+                          const isCut = clipboard?.mode === 'cut' && clipboard.id === m.id
+                          const isSelected = selectedItem?.id === m.id
+                          return (
+                            <div
+                              key={m.id}
+                              draggable
+                              onDragStart={(e) => onDragStart(e, ref)}
+                              onDragEnd={onDragEnd}
+                              onClick={(e) => { e.stopPropagation(); setSelectedItem(ref); setSelectedDay(day.ymd); onEditMilestone?.(m) }}
+                              title={`Milestone: ${m.name}\nProject: ${projectCode(m.projectId)}\nTarget: ${m.targetDate} (${m.status})\nClick to edit`}
+                              className={cn(
+                                'group relative cursor-grab active:cursor-grabbing rounded border shadow-sm transition-all select-none min-w-0',
+                                isTwoColMatrix ? 'px-1.5 py-1 text-[11px]' : 'px-2 py-1.5 text-xs',
+                                milestoneCardStyle(m, today),
+                                isSelected && 'ring-2 ring-primary',
+                                (draggingId === m.id || isCut) && 'opacity-45 border-dashed',
+                              )}
+                            >
+                              <div className="flex items-start gap-1 min-w-0">
+                                {!isTwoColMatrix && <GripVertical className="h-3.5 w-3.5 shrink-0 opacity-50 group-hover:opacity-90 mt-0.5" />}
+                                <Flag className="h-3 w-3 shrink-0 mt-0.5" />
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-semibold truncate leading-tight">{m.name}</p>
+                                  <p className="text-[10px] opacity-80 truncate leading-tight mt-0.5">{projectCode(m.projectId)} · Milestone</p>
+                                </div>
+                                <div className="hidden group-hover:flex items-center gap-0.5 shrink-0 bg-white/90 rounded px-1 py-0.5 shadow-sm" onClick={(e) => e.stopPropagation()}>
+                                  <button onClick={() => handleCopy(ref)} title="Copy milestone" className="p-0.5 hover:text-primary"><Copy className="h-3 w-3" /></button>
+                                  <button onClick={() => handleCut(ref)} title="Cut milestone to move" className="p-0.5 hover:text-primary"><Scissors className="h-3 w-3" /></button>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        )
-                      })}
+                          )
+                        })}
 
-                      {/* Tasks on this day */}
-                      {dayTasks.map((t) => {
-                        const ref: ItemRef = { kind: 'task', id: t.id, name: t.name }
-                        const isCut = clipboard?.mode === 'cut' && clipboard.id === t.id
-                        const isSelected = selectedItem?.id === t.id
-                        return (
-                          <div
-                            key={t.id}
-                            draggable
-                            onDragStart={(e) => onDragStart(e, ref)}
-                            onDragEnd={onDragEnd}
-                            onClick={(e) => { e.stopPropagation(); setSelectedItem(ref); setSelectedDay(day.ymd); onEditTask?.(t) }}
-                            title={`Task: ${t.name}\nProject: ${projectCode(t.projectId)}\nStatus: ${t.status} (${t.progress}%)\nDue: ${t.dueDate}\nClick to edit`}
-                            className={cn(
-                              'group cursor-grab active:cursor-grabbing rounded border px-2 py-1.5 text-xs shadow-sm transition-all select-none',
-                              taskCardStyle(t, today),
-                              isSelected && 'ring-2 ring-primary',
-                              (draggingId === t.id || isCut) && 'opacity-45 border-dashed',
-                            )}
-                          >
-                            <div className="flex items-start gap-1">
-                              <GripVertical className="h-3.5 w-3.5 shrink-0 opacity-50 group-hover:opacity-90 mt-0.5" />
-                              <CheckSquare className="h-3 w-3 shrink-0 mt-0.5" />
-                              <div className="min-w-0 flex-1">
-                                <p className="font-semibold truncate">{t.name}</p>
-                                <p className="text-[11px] opacity-80 truncate">{projectCode(t.projectId)} · {t.status} ({t.progress}%)</p>
-                              </div>
-                              <div className="hidden group-hover:flex items-center gap-0.5 shrink-0 bg-white/80 rounded px-1 py-0.5 shadow-sm" onClick={(e) => e.stopPropagation()}>
-                                <button onClick={() => handleCopy(ref)} title="Copy task" className="p-0.5 hover:text-primary"><Copy className="h-3 w-3" /></button>
-                                <button onClick={() => handleCut(ref)} title="Cut task to move" className="p-0.5 hover:text-primary"><Scissors className="h-3 w-3" /></button>
+                        {/* Tasks on this day */}
+                        {dayTasks.map((t) => {
+                          const ref: ItemRef = { kind: 'task', id: t.id, name: t.name }
+                          const isCut = clipboard?.mode === 'cut' && clipboard.id === t.id
+                          const isSelected = selectedItem?.id === t.id
+                          return (
+                            <div
+                              key={t.id}
+                              draggable
+                              onDragStart={(e) => onDragStart(e, ref)}
+                              onDragEnd={onDragEnd}
+                              onClick={(e) => { e.stopPropagation(); setSelectedItem(ref); setSelectedDay(day.ymd); onEditTask?.(t) }}
+                              title={`Task: ${t.name}\nProject: ${projectCode(t.projectId)}\nStatus: ${t.status} (${t.progress}%)\nDue: ${t.dueDate}\nClick to edit`}
+                              className={cn(
+                                'group relative cursor-grab active:cursor-grabbing rounded border shadow-sm transition-all select-none min-w-0',
+                                isTwoColMatrix ? 'px-1.5 py-1 text-[11px]' : 'px-2 py-1.5 text-xs',
+                                taskCardStyle(t, today),
+                                isSelected && 'ring-2 ring-primary',
+                                (draggingId === t.id || isCut) && 'opacity-45 border-dashed',
+                              )}
+                            >
+                              <div className="flex items-start gap-1 min-w-0">
+                                {!isTwoColMatrix && <GripVertical className="h-3.5 w-3.5 shrink-0 opacity-50 group-hover:opacity-90 mt-0.5" />}
+                                <CheckSquare className="h-3 w-3 shrink-0 mt-0.5" />
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-semibold truncate leading-tight">{t.name}</p>
+                                  <p className="text-[10px] opacity-80 truncate leading-tight mt-0.5">{projectCode(t.projectId)} · {t.status}</p>
+                                </div>
+                                <div className="hidden group-hover:flex items-center gap-0.5 shrink-0 bg-white/90 rounded px-1 py-0.5 shadow-sm" onClick={(e) => e.stopPropagation()}>
+                                  <button onClick={() => handleCopy(ref)} title="Copy task" className="p-0.5 hover:text-primary"><Copy className="h-3 w-3" /></button>
+                                  <button onClick={() => handleCut(ref)} title="Cut task to move" className="p-0.5 hover:text-primary"><Scissors className="h-3 w-3" /></button>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        )
-                      })}
+                          )
+                        })}
+                      </div>
                     </div>
                   )
                 })}

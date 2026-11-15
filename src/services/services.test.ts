@@ -171,7 +171,7 @@ describe('NPI Project Manager — Full Database & Service Suite', () => {
 
     // Add a user-created project alongside sample data
     const userProjId = await createProject({ ...emptyProject(), code: 'USER-01', name: 'My Real NPI Project' })
-    expect(await db.projects.count()).toBe(5)
+    expect(await db.projects.count()).toBe(9)
 
     // Test Excel sheet builders for all 8 report types
     for (const report of REPORT_NAMES) {
@@ -190,8 +190,8 @@ describe('NPI Project Manager — Full Database & Service Suite', () => {
     expect(await db.projects.count()).toBe(1)
     expect((await db.projects.get(userProjId))?.code).toBe('USER-01')
 
-    // Restore from backup brings back all 5 projects
+    // Restore from backup brings back all 9 projects
     await restoreBackup(backup)
-    expect(await db.projects.count()).toBe(5)
+    expect(await db.projects.count()).toBe(9)
   })
 })

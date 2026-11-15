@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { GanttChart, Plus, Table2 } from 'lucide-react'
 import { useTable } from '@/hooks/useTable'
+import { usePersistedState } from '@/hooks/usePersistedState'
 import { MILESTONE_STATUSES, PRIORITIES, TASK_STATUSES, type Milestone, type Project, type Supplier, type Task, type Workstream } from '@/types'
 import { Button, Card, ConfirmDialog, EmptyState, Input, Loading, Select } from '@/components/ui'
 import { TaskForm } from '@/features/tasks/TaskForm'
@@ -23,14 +24,14 @@ export function TasksPage() {
   const suppliers = useTable<Supplier>('suppliers')
   const [params, setParams] = useSearchParams()
 
-  const [section, setSection] = useState<'tasks' | 'milestones'>('tasks')
-  const [view, setView] = useState<'table' | 'timeline'>('table')
-  const [search, setSearch] = useState('')
-  const [fProject, setFProject] = useState('')
-  const [fSupplier, setFSupplier] = useState('')
-  const [fStatus, setFStatus] = useState('')
-  const [fPriority, setFPriority] = useState('')
-  const [onlyOverdue, setOnlyOverdue] = useState(false)
+  const [section, setSection] = usePersistedState<'tasks' | 'milestones'>('npi.tasks.section', 'tasks')
+  const [view, setView] = usePersistedState<'table' | 'timeline'>('npi.tasks.view', 'table')
+  const [search, setSearch] = usePersistedState<string>('npi.tasks.search', '')
+  const [fProject, setFProject] = usePersistedState<string>('npi.tasks.fProject', '')
+  const [fSupplier, setFSupplier] = usePersistedState<string>('npi.tasks.fSupplier', '')
+  const [fStatus, setFStatus] = usePersistedState<string>('npi.tasks.fStatus', '')
+  const [fPriority, setFPriority] = usePersistedState<string>('npi.tasks.fPriority', '')
+  const [onlyOverdue, setOnlyOverdue] = usePersistedState<boolean>('npi.tasks.onlyOverdue', false)
 
   const [taskOpen, setTaskOpen] = useState(false)
   const [taskEditing, setTaskEditing] = useState<Task | undefined>()
@@ -68,7 +69,12 @@ export function TasksPage() {
   if (!tasks || !milestones || !projects || !workstreams || !suppliers) return <Loading />
 
   const projectOptions = [{ value: '', label: 'All projects' }, ...projects.map((p) => ({ value: p.id, label: p.code }))]
-  const switchSection = (s: 'tasks' | 'milestones') => { setSection(s); setFStatus(''); setError('') }
+  const switchSection = (s: 'tasks' | 'milestones') => {
+    setSection(s)
+    const allowed = s === 'tasks' ? (TASK_STATUSES as readonly string[]) : (MILESTONE_STATUSES as readonly string[])
+    if (fStatus && !allowed.includes(fStatus)) setFStatus('')
+    setError('')
+  }
   const tabCls = (on: boolean) => `px-3 py-2 text-sm border-b-2 -mb-px ${on ? 'border-primary text-primary font-medium' : 'border-transparent text-slate-500 hover:text-slate-800'}`
 
   return (

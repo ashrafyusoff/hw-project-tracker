@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { PRIORITIES, TASK_STATUSES, type Project, type Supplier, type Task, type Workstream } from '@/types'
+import { NON_NPI_TASK_STATUSES, PRIORITIES, TASK_STATUSES, type Project, type Supplier, type Task, type Workstream } from '@/types'
 import { createTask, emptyTask, updateTask, type TaskInput } from '@/services/taskService'
 import { useTable } from '@/hooks/useTable'
 import { todayStr } from '@/utils/helpers'
@@ -7,15 +7,44 @@ import { errorMessage } from '@/utils/validation'
 import { Button, Field, FormError, Input, Modal, Select, Textarea } from '@/components/ui'
 
 // `defaultProjectId` pre-selects the project when adding from inside a project.
-export function TaskForm({ open, task, defaultProjectId, onClose }: { open: boolean; task?: Task; defaultProjectId?: string; onClose: () => void }) {
+// `nonNpiOnly` restricts the project dropdown strictly to Non-NPI Work items (excluding HRS projects).
+export function TaskForm({
+  open,
+  task,
+  defaultProjectId,
+  nonNpiOnly = false,
+  onClose,
+}: {
+  open: boolean
+  task?: Task
+  defaultProjectId?: string
+  nonNpiOnly?: boolean
+  onClose: () => void
+}) {
   return (
     <Modal open={open} onClose={onClose} title={task ? 'Edit Task' : 'Add Task'} wide>
-      <Body key={`${open ? 'open' : 'closed'}-${task?.id ?? 'new'}-${task?.updatedAt ?? ''}`} task={task} defaultProjectId={defaultProjectId} onClose={onClose} />
+      <Body
+        key={`${open ? 'open' : 'closed'}-${task?.id ?? 'new'}-${task?.updatedAt ?? ''}-${defaultProjectId ?? ''}-${nonNpiOnly ? 'nonnpi' : 'all'}`}
+        task={task}
+        defaultProjectId={defaultProjectId}
+        nonNpiOnly={nonNpiOnly}
+        onClose={onClose}
+      />
     </Modal>
   )
 }
 
-function Body({ task, defaultProjectId, onClose }: { task?: Task; defaultProjectId?: string; onClose: () => void }) {
+function Body({
+  task,
+  defaultProjectId,
+  nonNpiOnly,
+  onClose,
+}: {
+  task?: Task
+  defaultProjectId?: string
+  nonNpiOnly?: boolean
+  onClose: () => void
+}) {
   const projects = useTable<Project>('projects') ?? []
   const workstreams = useTable<Workstream>('workstreams') ?? []
   const suppliers = useTable<Supplier>('suppliers') ?? []
@@ -28,7 +57,10 @@ function Body({ task, defaultProjectId, onClose }: { task?: Task; defaultProject
   const set = <K extends keyof TaskInput>(k: K, v: TaskInput[K]) => setForm((f) => ({ ...f, [k]: v }))
 
   const selectedProject = projects.find((p) => p.id === form.projectId)
-  const isNonNpiProject = !!selectedProject?.isNonNpi
+  const isNonNpiProject = !!nonNpiOnly || !!selectedProject?.isNonNpi
+  const selectableProjects = nonNpiOnly ? projects.filter((p) => !!p.isNonNpi) : projects
+  const statusOptions = isNonNpiProject ? NON_NPI_TASK_STATUSES : TASK_STATUSES
+
   const selectedDeliverable = workstreams.find((w) => w.id === form.workstreamId)
   const effectiveSupplierId = selectedDeliverable ? selectedDeliverable.supplierId : form.supplierId
   const supplierName = suppliers.find((s) => s.id === effectiveSupplierId)?.name ?? '— None (set in Deliverable) —'
@@ -74,15 +106,17 @@ function Body({ task, defaultProjectId, onClose }: { task?: Task; defaultProject
       <FormError message={error} />
       <Field label="Task Name" required><Input value={form.name} onChange={(e) => set('name', e.target.value)} /></Field>
       <div className="grid sm:grid-cols-2 gap-3">
-        <Field label="Project (HRS / Non-NPI)" required>
+        <Field label={nonNpiOnly ? 'Non-NPI Work' : 'Project (HRS / Non-NPI)'} required>
           <Select
             value={form.projectId}
             onChange={(e) => handleProjectChange(e.target.value)}
             options={[
-              { value: '', label: 'Select project…' },
-              ...projects.map((p) => ({
+              { value: '', label: nonNpiOnly ? 'Select Non-NPI Work…' : 'Select project…' },
+              ...selectableProjects.map((p) => ({
                 value: p.id,
-                label: p.isNonNpi ? `[Non-NPI] ${p.code} – ${p.name}` : `${p.code}${p.deviceName ? ` – ${p.deviceName}` : ''}`,
+                label: p.isNonNpi
+                  ? `${p.code} – ${p.name}`
+                  : `${p.code}${p.deviceName ? ` – ${p.deviceName}` : ''}`,
               })),
             ]}
           />
@@ -110,7 +144,11 @@ function Body({ task, defaultProjectId, onClose }: { task?: Task; defaultProject
           <Select options={PRIORITIES} value={form.priority} onChange={(e) => set('priority', e.target.value as TaskInput['priority'])} />
         </Field>
         <Field label="Status">
-          <Select options={TASK_STATUSES} value={form.status} onChange={(e) => set('status', e.target.value as TaskInput['status'])} />
+          <Select
+            options={statusOptions}
+            value={statusOptions.includes(form.status as never) ? form.status : 'Not Started'}
+            onChange={(e) => set('status', e.target.value as TaskInput['status'])}
+          />
         </Field>
         <Field label="Start Date (Creation Date)">
           <Input type="date" value={form.startDate} disabled readOnly className="bg-slate-100 text-slate-500 cursor-not-allowed" />

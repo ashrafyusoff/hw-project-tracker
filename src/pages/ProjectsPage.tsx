@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, GitBranch, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useTable } from '@/hooks/useTable'
+import { usePersistedState } from '@/hooks/usePersistedState'
 import {
   ACTIVE_PROJECT_STATUSES,
   HARDWARE_STATUSES,
@@ -48,28 +49,13 @@ export function ProjectsPage() {
 
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
-  const [search, setSearch] = useState('')
-  const [hwType, setHwType] = useState('')
-  const [status, setStatus] = useState('')
-  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'code', dir: 1 })
+  const [search, setSearch] = usePersistedState<string>('npi.projects.search', '')
+  const [hwType, setHwType] = usePersistedState<string>('npi.projects.hwType', '')
+  const [status, setStatus] = usePersistedState<string>('npi.projects.status', '')
+  const [sort, setSort] = usePersistedState<{ key: SortKey; dir: 1 | -1 }>('npi.projects.sort', { key: 'code', dir: 1 })
 
   // Persist expand/collapse memory across tab switches & reloads
-  const [collapsedIds, setCollapsedIds] = useState<Record<string, boolean>>(() => {
-    try {
-      const raw = localStorage.getItem(COLLAPSED_STORAGE_KEY)
-      return raw ? JSON.parse(raw) : {}
-    } catch {
-      return {}
-    }
-  })
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify(collapsedIds))
-    } catch {
-      // ignore storage errors
-    }
-  }, [collapsedIds])
+  const [collapsedIds, setCollapsedIds] = usePersistedState<Record<string, boolean>>(COLLAPSED_STORAGE_KEY, {})
 
   // Modals for Project and Deliverable + Commercial (combined)
   const [formOpen, setFormOpen] = useState(false)

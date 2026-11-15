@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Archive, ArrowLeft, FileSpreadsheet, GitBranch, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { Archive, ArrowLeft, Calendar, Cpu, FileSpreadsheet, GitBranch, Layers, Pencil, Plus, Server, Trash2, TrendingUp, X } from 'lucide-react'
 import { db } from '@/database/db'
 import { WORKSTREAM_STATUSES, isArchivedStatus, type Milestone, type Supplier, type Task, type Workstream, type WorkstreamStatus } from '@/types'
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Loading, ProgressBar, Select } from '@/components/ui'
@@ -20,7 +20,7 @@ import { deleteMilestone } from '@/services/milestoneService'
 import { deleteProject } from '@/services/projectService'
 import { deleteWorkstream, updateWorkstream } from '@/services/workstreamService'
 import { linkSupplierToProject, unlinkSupplierFromProject } from '@/services/supplierService'
-import { formatDate, formatDateTime, isPast } from '@/utils/helpers'
+import { daysUntil, formatDate, formatDateTime, isPast } from '@/utils/helpers'
 import { errorMessage } from '@/utils/validation'
 
 const TABS = ['Overview', 'Deliverables & Commercial', 'Tasks', 'Suppliers', 'Milestones', 'Activity History'] as const
@@ -110,10 +110,6 @@ export function ProjectDetailPage() {
     Milestones: milestones.length,
   })[t as string]
 
-  const Field = ({ label, value }: { label: string; value: ReactNode }) => (
-    <div><dt className="text-xs text-slate-500">{label}</dt><dd className="text-sm mt-0.5">{value || '—'}</dd></div>
-  )
-
   const archived = isArchivedStatus(p.status)
 
   return (
@@ -153,21 +149,100 @@ export function ProjectDetailPage() {
       </div>
 
       {tab === 'Overview' && (
-        <div className="space-y-4">
-          <Card>
-            <div className="mb-4 max-w-sm"><p className="text-xs text-slate-500 mb-1">Overall progress</p><ProgressBar value={p.progress} /></div>
-            <dl className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <Field label="HRS Number" value={p.code} />
-              <Field label="HW Type" value={p.hwType || 'FT'} />
-              <Field label="Device Name" value={p.deviceName} />
-              <Field label="ATE Platform" value={p.atePlatform} />
-              <Field label="Start Date (Creation Date)" value={formatDate(p.startDate)} />
-              <Field label="HW Required Date" value={formatDate(p.baselineDate)} />
-            </dl>
-            <dl className="grid gap-4 mt-4">
-              <Field label="Description" value={p.description} />
-            </dl>
-          </Card>
+        <div className="space-y-3">
+          {/* Compact, attractive executive summary ribbon */}
+          <section className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div className="h-1 w-full bg-gradient-to-r from-blue-600 via-indigo-500 to-cyan-500" />
+            <div className="p-3 space-y-2.5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+                {/* 1. HRS & HW Type */}
+                <div className="rounded-md border border-slate-100 bg-slate-50/70 px-2.5 py-2">
+                  <div className="flex items-center justify-between text-[11px] font-medium text-slate-400">
+                    <span>HRS / HW Type</span>
+                    <Layers className="h-3.5 w-3.5 text-blue-500" />
+                  </div>
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <span className="text-sm font-bold text-slate-900">{p.code}</span>
+                    <Badge color="blue">{p.hwType || 'FT'}</Badge>
+                  </div>
+                </div>
+
+                {/* 2. Device Name */}
+                <div className="rounded-md border border-slate-100 bg-slate-50/70 px-2.5 py-2 min-w-0">
+                  <div className="flex items-center justify-between text-[11px] font-medium text-slate-400">
+                    <span>Device Name</span>
+                    <Cpu className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
+                  </div>
+                  <div className="mt-1 text-sm font-semibold text-slate-800 truncate" title={p.deviceName || '—'}>
+                    {p.deviceName || '—'}
+                  </div>
+                </div>
+
+                {/* 3. ATE Platform */}
+                <div className="rounded-md border border-slate-100 bg-slate-50/70 px-2.5 py-2 min-w-0">
+                  <div className="flex items-center justify-between text-[11px] font-medium text-slate-400">
+                    <span>ATE Platform</span>
+                    <Server className="h-3.5 w-3.5 text-violet-500 shrink-0" />
+                  </div>
+                  <div className="mt-1 text-sm font-semibold text-slate-800 truncate" title={p.atePlatform || '—'}>
+                    {p.atePlatform || '—'}
+                  </div>
+                </div>
+
+                {/* 4. Schedule (Start → HW Required) */}
+                <div className="rounded-md border border-slate-100 bg-slate-50/70 px-2.5 py-2">
+                  <div className="flex items-center justify-between text-[11px] font-medium text-slate-400">
+                    <span>Start → HW Required</span>
+                    <Calendar className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                  </div>
+                  <div className="mt-1 text-xs font-semibold text-slate-800 whitespace-nowrap">
+                    {formatDate(p.startDate)} → <span className="text-primary">{formatDate(p.baselineDate)}</span>
+                  </div>
+                </div>
+
+                {/* 5. Breakdown Counts */}
+                <div className="rounded-md border border-slate-100 bg-slate-50/70 px-2.5 py-2">
+                  <div className="flex items-center justify-between text-[11px] font-medium text-slate-400">
+                    <span>Items Tracked</span>
+                    <GitBranch className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                  </div>
+                  <div className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-slate-700 whitespace-nowrap">
+                    <span>{workstreams.length} Deliv</span>
+                    <span className="text-slate-300">·</span>
+                    <span>{tasks.length} Tasks</span>
+                    <span className="text-slate-300">·</span>
+                    <span>{milestones.length} MS</span>
+                  </div>
+                </div>
+
+                {/* 6. Overall Progress */}
+                <div className="rounded-md border border-slate-100 bg-slate-50/70 px-2.5 py-2">
+                  <div className="flex items-center justify-between text-[11px] font-medium text-slate-400 mb-1">
+                    <span>Overall Progress</span>
+                    <TrendingUp className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                  </div>
+                  <ProgressBar value={p.progress} />
+                </div>
+              </div>
+
+              {/* Compact single-line description & deadline indicator */}
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded bg-slate-50 px-3 py-1.5 text-xs border border-slate-100">
+                <div className="min-w-0 flex-1 text-slate-600">
+                  <span className="font-semibold text-slate-700 mr-1.5">Description:</span>
+                  <span>{p.description || 'No description provided.'}</span>
+                </div>
+                {p.baselineDate && !archived && (
+                  <span className="shrink-0">
+                    {daysUntil(p.baselineDate) < 0 ? (
+                      <Badge color="red">Overdue by {-daysUntil(p.baselineDate)}d</Badge>
+                    ) : (
+                      <Badge color="green">{daysUntil(p.baselineDate)}d until HW Required</Badge>
+                    )}
+                  </span>
+                )}
+              </div>
+            </div>
+          </section>
 
           <Card title={`NPI / HRS ${p.code} Master Gantt Chart`}>
             <ProjectGanttChart

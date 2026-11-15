@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { AlertTriangle, Database, Download, FileSpreadsheet, RotateCcw, Upload } from 'lucide-react'
+import { AlertTriangle, Check, Database, Download, FileSpreadsheet, Moon, RotateCcw, Sun, Upload } from 'lucide-react'
 import { db, TABLE_NAMES } from '@/database/db'
 import { Button, Card, ConfirmDialog, Loading } from '@/components/ui'
+import { useTheme } from '@/hooks/useTheme'
 import { exportJsonBackup, getDatabaseStatus, resetAllData, restoreBackup, validateBackup, type BackupFile } from '@/services/backupService'
 import { REPORT_NAMES, exportAllReports, exportReport } from '@/services/exportService'
 import { clearSampleData, hasSampleData, loadSampleData } from '@/services/sampleData'
@@ -17,6 +18,7 @@ const VISIBLE_TABLES = Object.keys(LABELS) as (keyof typeof LABELS)[]
 
 export function SettingsPage() {
   const fileRef = useRef<HTMLInputElement>(null)
+  const { theme, setTheme } = useTheme()
   const [pending, setPending] = useState<BackupFile | undefined>()
   const [confirmReset, setConfirmReset] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
@@ -52,6 +54,24 @@ export function SettingsPage() {
         <p>Your data is stored locally in this browser. It is not automatically synchronised across different devices or browsers. Export regular backups to prevent data loss.</p>
       </div>
       {msg && <p className={`rounded-md px-3 py-2 text-sm ${msg.type === 'ok' ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}`}>{msg.text}</p>}
+
+      <Card title="Appearance (Dark / Light Mode)">
+        <p className="text-sm text-slate-500 mb-3">Choose between Light Mode and Dark Mode across HW Project Tracker.</p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant={theme === 'light' ? 'primary' : 'secondary'}
+            onClick={() => setTheme('light')}
+          >
+            <Sun className="h-4 w-4" /> Light Mode {theme === 'light' && <Check className="h-3.5 w-3.5 ml-0.5" />}
+          </Button>
+          <Button
+            variant={theme === 'dark' ? 'primary' : 'secondary'}
+            onClick={() => setTheme('dark')}
+          >
+            <Moon className="h-4 w-4" /> Dark Mode {theme === 'dark' && <Check className="h-3.5 w-3.5 ml-0.5" />}
+          </Button>
+        </div>
+      </Card>
 
       <Card title="JSON Backup">
         <p className="text-sm text-slate-500 mb-3">Save all your data to one file, or restore from a previous backup. Restoring replaces everything currently stored.</p>
@@ -89,7 +109,7 @@ export function SettingsPage() {
 
       <Card title="About">
         <p className="text-sm text-slate-600">
-          <b>NPI Project Manager</b> — Personal Semiconductor NPI Hardware Project Management Application · Website by <b className="text-primary">Pacca1214</b>
+          <b>HW Project Tracker</b> — Personal Semiconductor NPI Hardware Project Management Application · Website by <b className="text-primary">Pacca1214</b>
         </p>
       </Card>
 

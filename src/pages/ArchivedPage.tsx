@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Archive, ArrowDown, ArrowUp, ChevronDown, ChevronRight, FileSpreadsheet, GitBranch, Trash2 } from 'lucide-react'
 import { useTable } from '@/hooks/useTable'
+import { usePersistedState } from '@/hooks/usePersistedState'
 import {
   ARCHIVED_PROJECT_STATUSES,
   HW_TYPES,
@@ -41,11 +42,11 @@ export function ArchivedPage() {
   const pos = useTable<PoRecord>('poRecords')
 
   const navigate = useNavigate()
-  const [search, setSearch] = useState('')
-  const [hwType, setHwType] = useState('')
-  const [status, setStatus] = useState('')
-  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'code', dir: 1 })
-  const [collapsedIds, setCollapsedIds] = useState<Record<string, boolean>>({})
+  const [search, setSearch] = usePersistedState<string>('npi.archived.search', '')
+  const [hwType, setHwType] = usePersistedState<string>('npi.archived.hwType', '')
+  const [status, setStatus] = usePersistedState<string>('npi.archived.status', '')
+  const [sort, setSort] = usePersistedState<{ key: SortKey; dir: 1 | -1 }>('npi.archived.sort', { key: 'code', dir: 1 })
+  const [collapsedIds, setCollapsedIds] = usePersistedState<Record<string, boolean>>('npi.archived.collapsedIds', {})
   const [deleting, setDeleting] = useState<Project | undefined>()
   const [error, setError] = useState('')
 
