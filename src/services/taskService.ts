@@ -25,8 +25,9 @@ function normalise(i: TaskInput): TaskInput {
 }
 
 export async function createTask(input: TaskInput) {
-  validate(input)
-  const data = normalise(input)
+  const withStart = { ...input, startDate: input.startDate || todayStr() }
+  validate(withStart)
+  const data = normalise(withStart)
   const now = nowIso()
   const id = newId()
   await db.transaction('rw', [db.tasks, db.projectSuppliers, db.activityLogs], async () => {
@@ -110,6 +111,6 @@ export async function duplicateTaskToDate(id: string, newDueDate: string) {
 }
 
 export const emptyTask = (projectId = ''): TaskInput => ({
-  projectId, workstreamId: '', name: '', assignee: '', supplierId: '', startDate: '', dueDate: '', completionDate: '',
+  projectId, workstreamId: '', name: '', assignee: '', supplierId: '', startDate: todayStr(), dueDate: '', completionDate: '',
   priority: 'Medium', status: 'Not Started', progress: 0, remarks: '',
 })

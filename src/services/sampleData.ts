@@ -84,18 +84,18 @@ export async function loadSampleData() {
 
   // ---------- Commercial (Quotation + PET + PO + Delivery Tracking per Deliverable) ----------
   const quotations = [
-    { ...base(), number: 'Q-NOVA-1182', projectId: falcon.id, workstreamId: wFalconPcb.id, supplierId: nova.id, requestDate: d(-50), receivedDate: d(-44), amount: 8450, currency: 'USD', status: 'Accepted', remarks: '24-layer load board fabrication quote.' },
-    { ...base(), number: 'Q-MSTL-0457', projectId: falcon.id, workstreamId: wFalconSock.id, supplierId: meridian.id, requestDate: d(-28), receivedDate: d(-20), amount: 3200, currency: 'USD', status: 'Accepted', remarks: 'Pogo-pin socket assembly.' },
-    { ...base(), number: 'Q-NOVA-1195', projectId: orion.id, workstreamId: wOrionPcb.id, supplierId: nova.id, requestDate: d(-80), receivedDate: d(-74), amount: 11200, currency: 'USD', status: 'Accepted', remarks: 'High-frequency RF laminate load board.' },
-    { ...base(), number: 'Q-APEX-2209', projectId: orion.id, workstreamId: wOrionHandler.id, supplierId: apex.id, requestDate: d(-12), receivedDate: '', amount: 450000, currency: 'JPY', status: 'Requested', remarks: 'Awaiting final handler change kit quote.' },
-    { ...base(), number: 'Q-MSTL-0390', projectId: lynx.id, workstreamId: wLynxSock.id, supplierId: meridian.id, requestDate: d(-170), receivedDate: d(-165), amount: 2900, currency: 'USD', status: 'Accepted', remarks: 'Production test socket.' },
+    { ...base(), number: 'Q-NOVA-1182', projectId: falcon.id, workstreamId: wFalconPcb.id, supplierId: nova.id, remarks: '24-layer load board fabrication quote.' },
+    { ...base(), number: 'Q-MSTL-0457', projectId: falcon.id, workstreamId: wFalconSock.id, supplierId: meridian.id, remarks: 'Pogo-pin socket assembly.' },
+    { ...base(), number: 'Q-NOVA-1195', projectId: orion.id, workstreamId: wOrionPcb.id, supplierId: nova.id, remarks: 'High-frequency RF laminate load board.' },
+    { ...base(), number: 'Q-APEX-2209', projectId: orion.id, workstreamId: wOrionHandler.id, supplierId: apex.id, remarks: 'Handler change kit quote.' },
+    { ...base(), number: 'Q-MSTL-0390', projectId: lynx.id, workstreamId: wLynxSock.id, supplierId: meridian.id, remarks: 'Production test socket.' },
   ]
   const petRecords = [
-    { ...base(), reference: 'PET-24-0132', projectId: falcon.id, workstreamId: wFalconPcb.id, supplierId: nova.id, submissionDate: d(-42), approvalDate: d(-38), status: 'Approved', remarks: '' },
-    { ...base(), reference: 'PET-24-0139', projectId: falcon.id, workstreamId: wFalconSock.id, supplierId: meridian.id, submissionDate: d(-18), approvalDate: d(-14), status: 'Approved', remarks: '' },
-    { ...base(), reference: 'PET-24-0118', projectId: orion.id, workstreamId: wOrionPcb.id, supplierId: nova.id, submissionDate: d(-72), approvalDate: d(-68), status: 'Approved', remarks: '' },
-    { ...base(), reference: 'PET-24-0151', projectId: orion.id, workstreamId: wOrionHandler.id, supplierId: apex.id, submissionDate: d(-3), approvalDate: '', status: 'Submitted', remarks: '' },
-    { ...base(), reference: 'PET-24-0088', projectId: lynx.id, workstreamId: wLynxSock.id, supplierId: meridian.id, submissionDate: d(-164), approvalDate: d(-161), status: 'Approved', remarks: '' },
+    { ...base(), reference: 'PET-24-0132', projectId: falcon.id, workstreamId: wFalconPcb.id, supplierId: nova.id, remarks: '' },
+    { ...base(), reference: 'PET-24-0139', projectId: falcon.id, workstreamId: wFalconSock.id, supplierId: meridian.id, remarks: '' },
+    { ...base(), reference: 'PET-24-0118', projectId: orion.id, workstreamId: wOrionPcb.id, supplierId: nova.id, remarks: '' },
+    { ...base(), reference: 'PET-24-0151', projectId: orion.id, workstreamId: wOrionHandler.id, supplierId: apex.id, remarks: '' },
+    { ...base(), reference: 'PET-24-0088', projectId: lynx.id, workstreamId: wLynxSock.id, supplierId: meridian.id, remarks: '' },
   ]
   const poRecords = [
     { ...base(), number: 'PO-4500711', projectId: falcon.id, workstreamId: wFalconPcb.id, supplierId: nova.id, issueDate: d(-33), amount: 8450, currency: 'USD', expectedDelivery: d(20), actualDelivery: '', status: 'Issued', supplierConfirmation: 'Confirmed', hardwareDelivery: 'Fabrication', deliveryStatus: 'Fabrication', remarks: '' },

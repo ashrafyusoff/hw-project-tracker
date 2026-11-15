@@ -127,15 +127,9 @@ describe('NPI Project Manager — Full Database & Service Suite', () => {
     await saveDeliverableCommercial({
       ...emptyDeliverableCommercial(pId, wsId),
       quotationNumber: 'Q-RF-100',
-      quotationAmount: 4200,
-      quotationStatus: 'Accepted',
       petReference: 'PET-RF-100',
-      petStatus: 'Approved',
       poNumber: 'PO-RF-100',
       poAmount: 4200,
-      poStatus: 'Issued',
-      supplierConfirmation: 'Confirmed',
-      hardwareDelivery: 'Shipped / In Transit',
       deliveryStatus: 'In Transit',
     })
     const qRec = (await db.quotations.where('workstreamId').equals(wsId).toArray())[0]
@@ -150,7 +144,7 @@ describe('NPI Project Manager — Full Database & Service Suite', () => {
     expect(await db.petRecords.count()).toBe(0)
     expect(await db.poRecords.count()).toBe(0)
 
-    await createQuotation({ ...emptyQuotation(pId, wsId), number: 'Q-1', amount: 1500 })
+    await createQuotation({ ...emptyQuotation(pId, wsId), number: 'Q-1' })
     await createPet({ ...emptyPet(pId, wsId), reference: 'PET-1' })
     await createPo({ ...emptyPo(pId, wsId), number: 'PO-1', amount: 1500 })
     const po = (await db.poRecords.toArray())[0]

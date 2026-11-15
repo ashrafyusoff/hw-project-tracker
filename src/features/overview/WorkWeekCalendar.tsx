@@ -9,19 +9,19 @@ import { cn, todayStr } from '@/utils/helpers'
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'] as const
 const MINI_DAYS = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'] as const
 
-function toYmd(d: Date): string {
+export function toYmd(d: Date): string {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
 }
 
-function parseYmd(s: string): Date {
+export function parseYmd(s: string): Date {
   const [y, m, d] = s.split('-').map(Number)
   return new Date(y, m - 1, d)
 }
 
-function addDays(d: Date, n: number): Date {
+export function addDays(d: Date, n: number): Date {
   const out = new Date(d)
   out.setDate(out.getDate() + n)
   return out
@@ -141,18 +141,28 @@ export function WorkWeekCalendar({
   tasks,
   milestones,
   projects,
+  baseMonday: controlledMonday,
+  onBaseMondayChange,
   onEditTask,
   onEditMilestone,
 }: {
   tasks: Task[]
   milestones: Milestone[]
   projects: Project[]
+  baseMonday?: Date
+  onBaseMondayChange?: (d: Date) => void
   onEditTask?: (t: Task) => void
   onEditMilestone?: (m: Milestone) => void
 }) {
   const today = todayStr()
   // Start at current week's Monday by default; Prev/Next jumps by 1 month
-  const [baseMonday, setBaseMonday] = useState<Date>(() => getMondayOfWeek(parseYmd(today)))
+  const [internalMonday, setInternalMonday] = useState<Date>(() => getMondayOfWeek(parseYmd(today)))
+  const baseMonday = controlledMonday ?? internalMonday
+  const setBaseMonday = (updater: Date | ((prev: Date) => Date)) => {
+    const next = typeof updater === 'function' ? updater(baseMonday) : updater
+    setInternalMonday(next)
+    onBaseMondayChange?.(next)
+  }
   // Customizable number of weeks (1..10, default 4)
   const [weeksToShow, setWeeksToShow] = useState<number>(4)
   const [filterProject, setFilterProject] = useState('')
@@ -582,9 +592,8 @@ export function WorkWeekCalendar({
                             draggable
                             onDragStart={(e) => onDragStart(e, ref)}
                             onDragEnd={onDragEnd}
-                            onClick={(e) => { e.stopPropagation(); setSelectedItem(ref); setSelectedDay(day.ymd) }}
-                            onDoubleClick={(e) => { e.stopPropagation(); onEditMilestone?.(m) }}
-                            title={`Milestone: ${m.name}\nProject: ${projectCode(m.projectId)}\nTarget: ${m.targetDate} (${m.status})\nClick to select, double-click to edit`}
+                            onClick={(e) => { e.stopPropagation(); setSelectedItem(ref); setSelectedDay(day.ymd); onEditMilestone?.(m) }}
+                            title={`Milestone: ${m.name}\nProject: ${projectCode(m.projectId)}\nTarget: ${m.targetDate} (${m.status})\nClick to edit`}
                             className={cn(
                               'group cursor-grab active:cursor-grabbing rounded border px-2 py-1.5 text-xs shadow-sm transition-all select-none',
                               milestoneCardStyle(m, today),
@@ -619,9 +628,8 @@ export function WorkWeekCalendar({
                             draggable
                             onDragStart={(e) => onDragStart(e, ref)}
                             onDragEnd={onDragEnd}
-                            onClick={(e) => { e.stopPropagation(); setSelectedItem(ref); setSelectedDay(day.ymd) }}
-                            onDoubleClick={(e) => { e.stopPropagation(); onEditTask?.(t) }}
-                            title={`Task: ${t.name}\nProject: ${projectCode(t.projectId)}\nStatus: ${t.status} (${t.progress}%)\nDue: ${t.dueDate}\nClick to select, double-click to edit`}
+                            onClick={(e) => { e.stopPropagation(); setSelectedItem(ref); setSelectedDay(day.ymd); onEditTask?.(t) }}
+                            title={`Task: ${t.name}\nProject: ${projectCode(t.projectId)}\nStatus: ${t.status} (${t.progress}%)\nDue: ${t.dueDate}\nClick to edit`}
                             className={cn(
                               'group cursor-grab active:cursor-grabbing rounded border px-2 py-1.5 text-xs shadow-sm transition-all select-none',
                               taskCardStyle(t, today),

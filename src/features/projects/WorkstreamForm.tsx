@@ -14,7 +14,7 @@ import {
 import { createWorkstream, emptyWorkstream, updateWorkstream, type WorkstreamInput } from '@/services/workstreamService'
 import { emptyDeliverableCommercial, saveDeliverableCommercial, type DeliverableCommercialInput } from '@/services/commercialService'
 import { errorMessage } from '@/utils/validation'
-import { Button, Field, FormError, Input, Modal, Select, Textarea } from '@/components/ui'
+import { Button, Field, FormError, Input, Loading, Modal, Select, Textarea } from '@/components/ui'
 
 const PROGRESS_OPTIONS = PROGRESS_STEPS.map((p) => ({ value: String(p), label: `${p}%` }))
 const CURRENCIES = ['USD', 'MYR', 'SGD', 'JPY', 'EUR', 'CNY'] as const
@@ -32,9 +32,42 @@ export function WorkstreamForm({
   suppliers: Supplier[]
   onClose: () => void
 }) {
+  const workstreams = useTable<Workstream>('workstreams')
+  const quotations = useTable<Quotation>('quotations')
+  const pets = useTable<PetRecord>('petRecords')
+  const pos = useTable<PoRecord>('poRecords')
+
+  const isReady = !workstream || (workstreams !== undefined && quotations !== undefined && pets !== undefined && pos !== undefined)
+  const liveWs = workstream ? (workstreams?.find((w) => w.id === workstream.id) ?? workstream) : undefined
+
+  const existingQ = liveWs && quotations
+    ? quotations.find((r) => r.workstreamId === liveWs.id || (!r.workstreamId && r.projectId === liveWs.projectId && r.supplierId === liveWs.supplierId))
+    : undefined
+  const existingPet = liveWs && pets
+    ? pets.find((r) => r.workstreamId === liveWs.id || (!r.workstreamId && r.projectId === liveWs.projectId && r.supplierId === liveWs.supplierId))
+    : undefined
+  const existingPo = liveWs && pos
+    ? pos.find((r) => r.workstreamId === liveWs.id || (!r.workstreamId && r.projectId === liveWs.projectId && r.supplierId === liveWs.supplierId))
+    : undefined
+
+  const formKey = `${open ? 'open' : 'closed'}-${liveWs?.id ?? 'new'}-${liveWs?.updatedAt ?? ''}-${existingQ?.id ?? ''}-${existingPet?.id ?? ''}-${existingPo?.id ?? ''}`
+
   return (
-    <Modal open={open} onClose={onClose} title={workstream ? 'Edit Deliverable & Commercial' : 'Add Deliverable & Commercial'} wide>
-      <Body key={workstream?.id ?? 'new'} projectId={projectId} workstream={workstream} suppliers={suppliers} onClose={onClose} />
+    <Modal open={open} onClose={onClose} title={liveWs ? 'Edit Deliverable & Commercial' : 'Add Deliverable & Commercial'} wide>
+      {!isReady ? (
+        <Loading />
+      ) : (
+        <Body
+          key={formKey}
+          projectId={projectId}
+          workstream={liveWs}
+          existingQ={existingQ}
+          existingPet={existingPet}
+          existingPo={existingPo}
+          suppliers={suppliers}
+          onClose={onClose}
+        />
+      )}
     </Modal>
   )
 }
@@ -64,15 +97,23 @@ function normalizeHardwareStatus(po?: PoRecord): string {
   return 'Not Started'
 }
 
-function Body({ projectId, workstream, suppliers, onClose }: { projectId: string; workstream?: Workstream; suppliers: Supplier[]; onClose: () => void }) {
-  const quotations = useTable<Quotation>('quotations') ?? []
-  const pets = useTable<PetRecord>('petRecords') ?? []
-  const pos = useTable<PoRecord>('poRecords') ?? []
-
-  const existingQ = workstream ? quotations.find((r) => r.workstreamId === workstream.id) : undefined
-  const existingPet = workstream ? pets.find((r) => r.workstreamId === workstream.id) : undefined
-  const existingPo = workstream ? pos.find((r) => r.workstreamId === workstream.id) : undefined
-
+function Body({
+  projectId,
+  workstream,
+  existingQ,
+  existingPet,
+  existingPo,
+  suppliers,
+  onClose,
+}: {
+  projectId: string
+  workstream?: Workstream
+  existingQ?: Quotation
+  existingPet?: PetRecord
+  existingPo?: PoRecord
+  suppliers: Supplier[]
+  onClose: () => void
+}) {
   const [form, setForm] = useState<WorkstreamInput>(() => {
     if (workstream) {
       const cat = normalizeCategory(workstream.category)
@@ -82,6 +123,8 @@ function Body({ projectId, workstream, suppliers, onClose }: { projectId: string
         category: cat,
         name: cat === 'Others' ? customName : cat,
         mpn: workstream.mpn ?? '',
+        supplierId: workstream.supplierId || existingQ?.supplierId || existingPet?.supplierId || existingPo?.supplierId || '',
+        remarks: workstream.remarks || existingPo?.remarks || existingPet?.remarks || existingQ?.remarks || '',
         startDate: '',
         targetDate: '',
         actualDate: '',

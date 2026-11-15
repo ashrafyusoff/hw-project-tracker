@@ -1,12 +1,14 @@
 import { NavLink } from 'react-router-dom'
-import { BarChart3, CalendarCheck, ChevronsLeft, ChevronsRight, FolderKanban, ListChecks, Settings, Truck } from 'lucide-react'
+import { Archive, BarChart3, Briefcase, CalendarCheck, ChevronsLeft, ChevronsRight, FolderKanban, ListChecks, Settings, Truck } from 'lucide-react'
 import { cn } from '@/utils/helpers'
 
 export const NAV_ITEMS = [
   { to: '/', label: 'Overview', icon: BarChart3, end: true },
   { to: '/projects', label: 'Projects', icon: FolderKanban },
   { to: '/tasks', label: 'Tasks', icon: ListChecks },
+  { to: '/non-npi', label: 'Non-NPI Work', icon: Briefcase },
   { to: '/suppliers', label: 'Suppliers', icon: Truck },
+  { to: '/archived', label: 'Archived', icon: Archive },
   { to: '/settings', label: 'Settings', icon: Settings },
 ]
 

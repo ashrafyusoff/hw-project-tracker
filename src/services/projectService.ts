@@ -1,5 +1,5 @@
 import { db } from '@/database/db'
-import type { Project } from '@/types'
+import { isArchivedStatus, type Project } from '@/types'
 import { clampProgress, newId, nowIso, todayStr } from '@/utils/helpers'
 import { ValidationError, checkDateOrder, requireText } from '@/utils/validation'
 import { logActivity } from './activityService'
@@ -40,6 +40,9 @@ export async function updateProject(id: string, input: ProjectInput) {
   await assertCodeUnique(code, id)
   const old = await db.projects.get(id)
   if (!old) throw new ValidationError('Project no longer exists.')
+  if (isArchivedStatus(old.status) && !isArchivedStatus(input.status)) {
+    throw new ValidationError('Archived projects cannot be returned to active status.')
+  }
   const name = input.name.trim() || input.deviceName.trim() || code
   await db.transaction('rw', db.projects, db.activityLogs, async () => {
     await db.projects.update(id, { ...input, code, name, progress: clampProgress(input.progress), updatedAt: nowIso() })

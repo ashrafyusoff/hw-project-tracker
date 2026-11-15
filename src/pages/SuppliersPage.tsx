@@ -89,30 +89,23 @@ function SupplierDetail({ supplierId, onClose }: { supplierId: string; onClose: 
   const [error, setError] = useState('')
   const data = useLiveQuery(async () => {
     if (!supplierId) return null
-    const [supplier, links, workstreams, tasks, quotations, pets, projects] = await Promise.all([
+    const [supplier, links, workstreams, tasks, projects] = await Promise.all([
       db.suppliers.get(supplierId),
       db.projectSuppliers.where('supplierId').equals(supplierId).toArray(),
       db.workstreams.where('supplierId').equals(supplierId).toArray(),
       db.tasks.where('supplierId').equals(supplierId).toArray(),
-      db.quotations.where('supplierId').equals(supplierId).toArray(),
-      db.petRecords.where('supplierId').equals(supplierId).toArray(),
       db.projects.toArray(),
     ])
-    return { supplier, links, workstreams, tasks, quotations, pets, projects }
+    return { supplier, links, workstreams, tasks, projects }
   }, [supplierId])
 
   const open = !!supplierId
   if (!open) return null
   if (!data || !data.supplier) return <Modal open onClose={onClose} title="Supplier"><Loading /></Modal>
-  const { supplier: s, links, workstreams, tasks, quotations, pets, projects } = data
+  const { supplier: s, links, workstreams, tasks, projects } = data
   const proj = (id: string): Project | undefined => projects.find((p) => p.id === id)
   const linked = links.map((l) => proj(l.projectId)).filter((p): p is Project => !!p)
   const available = projects.filter((p) => !links.some((l) => l.projectId === p.id))
-  const followUps = [
-    ...tasks.filter((t) => t.status === 'Waiting for Supplier').map((t) => `Task: ${t.name} (${proj(t.projectId)?.code ?? ''})`),
-    ...quotations.filter((q) => !q.receivedDate).map((q) => `Quotation ${q.number} awaiting quote`),
-    ...pets.filter((r) => !r.approvalDate).map((r) => `PET ${r.reference} pending approval`),
-  ]
   const run = async (fn: () => Promise<void>) => { try { setError(''); await fn() } catch (e) { setError(errorMessage(e)) } }
 
   return (
@@ -157,11 +150,6 @@ function SupplierDetail({ supplierId, onClose }: { supplierId: string; onClose: 
           {tasks.length === 0 ? <p className="text-slate-400">None.</p> : (
             <ul className="space-y-1">{tasks.map((t) => <li key={t.id} className="flex justify-between"><span>{t.name} <span className="text-slate-400">· {proj(t.projectId)?.code}</span></span><span className="text-slate-500">{t.status} · due {formatDate(t.dueDate)}</span></li>)}</ul>
           )}
-        </section>
-
-        <section>
-          <h3 className="font-semibold mb-2">Pending Follow-ups</h3>
-          {followUps.length === 0 ? <p className="text-slate-400">Nothing pending.</p> : <ul className="list-disc pl-5 space-y-1">{followUps.map((f) => <li key={f}>{f}</li>)}</ul>}
         </section>
       </div>
     </Modal>

@@ -3,11 +3,13 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, GitBranch, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useTable } from '@/hooks/useTable'
 import {
+  ACTIVE_PROJECT_STATUSES,
   HARDWARE_STATUSES,
   HW_TYPES,
   PROGRESS_STEPS,
   PROJECT_STATUSES,
   WORKSTREAM_STATUSES,
+  isArchivedStatus,
   type PetRecord,
   type PoRecord,
   type Project,
@@ -73,6 +75,7 @@ export function ProjectsPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Project | undefined>()
   const [deleting, setDeleting] = useState<Project | undefined>()
+  const [archiving, setArchiving] = useState<{ project: Project; nextStatus: ProjectStatus } | undefined>()
 
   const [wsOpen, setWsOpen] = useState(false)
   const [wsProjectId, setWsProjectId] = useState('')
@@ -114,6 +117,8 @@ export function ProjectsPage() {
       }
     }
     return (projects ?? [])
+      .filter((p) => !p.isNonNpi)
+      .filter((p) => !isArchivedStatus(p.status))
       .filter((p) => !hwType || (p.hwType || 'FT') === hwType)
       .filter((p) => !status || p.status === status)
       .filter((p) => {
@@ -146,6 +151,17 @@ export function ProjectsPage() {
     try { await deleteProject(deleting.id); setDeleting(undefined) } catch (e) { setError(errorMessage(e)); setDeleting(undefined) }
   }
 
+  async function confirmArchive() {
+    if (!archiving) return
+    try {
+      await updateProject(archiving.project.id, { ...archiving.project, status: archiving.nextStatus })
+      setArchiving(undefined)
+    } catch (e) {
+      setError(errorMessage(e))
+      setArchiving(undefined)
+    }
+  }
+
   async function confirmDeleteDeliverable() {
     if (!wsDeleting) return
     try { await deleteWorkstream(wsDeleting.id); setWsDeleting(undefined) } catch (e) { setError(errorMessage(e)); setWsDeleting(undefined) }
@@ -159,7 +175,7 @@ export function ProjectsPage() {
       <div className="flex flex-wrap items-center gap-2">
         <Input placeholder="Search HRS, device, deliverable, MPN, PO…" value={search} onChange={(e) => setSearch(e.target.value)} className="!w-72" />
         <Select className="!w-36" value={hwType} onChange={(e) => setHwType(e.target.value)} options={[{ value: '', label: 'All HW types' }, ...HW_TYPES]} />
-        <Select className="!w-40" value={status} onChange={(e) => setStatus(e.target.value)} options={[{ value: '', label: 'All statuses' }, ...PROJECT_STATUSES]} />
+        <Select className="!w-40" value={status} onChange={(e) => setStatus(e.target.value)} options={[{ value: '', label: 'All statuses' }, ...ACTIVE_PROJECT_STATUSES]} />
         <Button variant="primary" className="ml-auto" onClick={() => { setEditing(undefined); setFormOpen(true) }}>
           <Plus className="h-4 w-4" /> Create Project
         </Button>
@@ -203,6 +219,7 @@ export function ProjectsPage() {
                       onNavigate={() => navigate(`/projects/${p.id}`)}
                       onEditProject={() => { setEditing(p); setFormOpen(true) }}
                       onDeleteProject={() => setDeleting(p)}
+                      onRequestArchive={(nextStatus) => setArchiving({ project: p, nextStatus })}
                       onAddDeliverable={() => { setWsProjectId(p.id); setWsEditing(undefined); setWsOpen(true) }}
                       onEditDeliverable={(w) => { setWsProjectId(p.id); setWsEditing(w); setWsOpen(true) }}
                       onDeleteDeliverable={(w) => setWsDeleting(w)}
@@ -232,6 +249,18 @@ export function ProjectsPage() {
         onCancel={() => setWsDeleting(undefined)}
         onConfirm={confirmDeleteDeliverable}
         message={<>Delete deliverable <b>{wsDeleting?.name || wsDeleting?.category}</b>? Linked commercial records will be removed, and tasks/milestones will be detached from this deliverable.</>}
+      />
+      <ConfirmDialog
+        open={!!archiving}
+        title={`Move HRS ${archiving?.project.code ?? ''} to Archived?`}
+        confirmLabel={`Confirm & Archive (${archiving?.nextStatus ?? ''})`}
+        onCancel={() => setArchiving(undefined)}
+        onConfirm={confirmArchive}
+        message={
+          <>
+            Changing the status of <b>HRS {archiving?.project.code}</b> to <b>{archiving?.nextStatus}</b> will move all project data to the <b>Archived</b> tab. <b>This action is non-returnable.</b> Do you want to proceed?
+          </>
+        }
       />
     </div>
   )
@@ -488,6 +517,7 @@ function ProjectWithDeliverablesGroup({
   onNavigate,
   onEditProject,
   onDeleteProject,
+  onRequestArchive,
   onAddDeliverable,
   onEditDeliverable,
   onDeleteDeliverable,
@@ -501,6 +531,7 @@ function ProjectWithDeliverablesGroup({
   onNavigate: () => void
   onEditProject: () => void
   onDeleteProject: () => void
+  onRequestArchive: (nextStatus: ProjectStatus) => void
   onAddDeliverable: () => void
   onEditDeliverable: (w: Workstream) => void
   onDeleteDeliverable: (w: Workstream) => void
@@ -531,7 +562,12 @@ function ProjectWithDeliverablesGroup({
             value={p.status}
             options={PROJECT_STATUSES}
             onChange={async (next) => {
-              try { await updateProject(p.id, { ...p, status: next as ProjectStatus }) } catch (e) { onError(errorMessage(e)) }
+              const nextStatus = next as ProjectStatus
+              if (isArchivedStatus(nextStatus)) {
+                onRequestArchive(nextStatus)
+                return
+              }
+              try { await updateProject(p.id, { ...p, status: nextStatus }) } catch (e) { onError(errorMessage(e)) }
             }}
           />
         </td>

@@ -1,6 +1,8 @@
 import { Pencil, Trash2 } from 'lucide-react'
-import type { Project, Supplier, Task, Workstream } from '@/types'
-import { Badge, Button, ProgressBar } from '@/components/ui'
+import { PRIORITIES, TASK_STATUSES, type Priority, type Project, type Supplier, type Task, type TaskStatus, type Workstream } from '@/types'
+import { Badge, Button } from '@/components/ui'
+import { InlineStatusSelect } from '@/pages/ProjectsPage'
+import { updateTask } from '@/services/taskService'
 import { daysUntil, formatDate } from '@/utils/helpers'
 
 export const isOpenTask = (t: Task) => t.status !== 'Completed' && t.status !== 'Cancelled'
@@ -16,9 +18,6 @@ export function DeadlineBadge({ task }: { task: Task }) {
   return null
 }
 
-const statusColor = (s: string) =>
-  s === 'Completed' ? 'green' : s === 'In Progress' ? 'blue' : s === 'Waiting for Supplier' ? 'amber' : s === 'Under Review' ? 'violet' : 'grey'
-
 interface Props {
   tasks: Task[]
   projects: Project[]
@@ -31,13 +30,19 @@ interface Props {
 
 export function TaskTable({ tasks, projects, workstreams, suppliers, showProject = true, onEdit, onDelete }: Props) {
   const proj = (id: string) => projects.find((p) => p.id === id)?.code ?? '—'
-  const ws = (id: string) => workstreams.find((w) => w.id === id)?.name ?? '—'
+  const ws = (id: string) => {
+    const w = workstreams.find((x) => x.id === id)
+    if (!w) return '—'
+    return w.category === 'Others' && w.name !== 'Others' ? `Others (${w.name})` : w.name || w.category
+  }
   const sup = (id: string) => suppliers.find((s) => s.id === id)?.name ?? '—'
-  const head = [...(showProject ? ['HRS Number'] : []), 'Task', 'Deliverable', 'Supplier', 'Start', 'Due', 'Priority', 'Status', 'Progress', '']
+  const head = [...(showProject ? ['HRS / Project'] : []), 'Task', 'Deliverable', 'Supplier', 'Start', 'Due', 'Priority', 'Status', 'Actions']
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
-        <thead className="text-xs text-slate-500 text-left bg-slate-50"><tr>{head.map((h, i) => <th key={i} className="px-3 py-2 font-medium whitespace-nowrap">{h}</th>)}</tr></thead>
+        <thead className="text-xs text-slate-500 text-left bg-slate-50">
+          <tr>{head.map((h, i) => <th key={i} className="px-3 py-2 font-medium whitespace-nowrap">{h}</th>)}</tr>
+        </thead>
         <tbody>
           {tasks.map((t) => (
             <tr key={t.id} className="border-t border-slate-100 hover:bg-slate-50">
@@ -50,13 +55,30 @@ export function TaskTable({ tasks, projects, workstreams, suppliers, showProject
                 <div className={isOverdueTask(t) ? 'text-red-600 font-medium' : ''}>{formatDate(t.dueDate)}</div>
                 <DeadlineBadge task={t} />
               </td>
-              <td className="px-3"><Badge>{t.priority}</Badge></td>
-              <td className="px-3"><Badge color={statusColor(t.status)}>{t.status}</Badge></td>
-              <td className="px-3 w-32"><ProgressBar value={t.progress} /></td>
-              <td className="px-3"><div className="flex gap-1">
-                <Button variant="ghost" size="sm" aria-label="Edit task" onClick={() => onEdit(t)}><Pencil className="h-3.5 w-3.5" /></Button>
-                <Button variant="ghost" size="sm" aria-label="Delete task" onClick={() => onDelete(t)}><Trash2 className="h-3.5 w-3.5 text-red-500" /></Button>
-              </div></td>
+              <td className="px-3">
+                <InlineStatusSelect
+                  value={t.priority}
+                  options={PRIORITIES}
+                  onChange={async (next) => {
+                    await updateTask(t.id, { ...t, priority: next as Priority })
+                  }}
+                />
+              </td>
+              <td className="px-3">
+                <InlineStatusSelect
+                  value={t.status}
+                  options={TASK_STATUSES}
+                  onChange={async (next) => {
+                    await updateTask(t.id, { ...t, status: next as TaskStatus })
+                  }}
+                />
+              </td>
+              <td className="px-3">
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="sm" aria-label="Edit task" onClick={() => onEdit(t)}><Pencil className="h-3.5 w-3.5" /></Button>
+                  <Button variant="ghost" size="sm" aria-label="Delete task" onClick={() => onDelete(t)}><Trash2 className="h-3.5 w-3.5 text-red-500" /></Button>
+                </div>
+              </td>
             </tr>
           ))}
         </tbody>

@@ -14,7 +14,6 @@ export type PoInput = Omit<PoRecord, 'id' | 'createdAt' | 'updatedAt' | 'isSampl
 function validateQuotation(i: QuotationInput) {
   requireText(i.number, 'Quotation number')
   if (!i.projectId) throw new ValidationError('Please choose a project.')
-  checkDateOrder(i.requestDate, i.receivedDate, 'request date', 'received date')
 }
 
 export async function createQuotation(input: QuotationInput) {
@@ -35,9 +34,7 @@ export async function updateQuotation(id: string, input: QuotationInput) {
   await db.transaction('rw', [db.quotations, db.projectSuppliers, db.activityLogs], async () => {
     await db.quotations.update(id, { ...input, number: input.number.trim(), updatedAt: nowIso() })
     if (input.supplierId) await linkSupplierToProject(input.projectId, input.supplierId)
-    const changed = old.status !== input.status
-    await logActivity('Quotation', id, input.projectId, changed ? 'Status Changed' : 'Updated',
-      changed ? `Quotation ${input.number} status: ${old.status} → ${input.status}` : `Quotation ${input.number} updated`)
+    await logActivity('Quotation', id, input.projectId, 'Updated', `Quotation ${input.number} updated`)
   })
 }
 
@@ -51,14 +48,13 @@ export async function deleteQuotation(id: string) {
 }
 
 export const emptyQuotation = (projectId = '', workstreamId = ''): QuotationInput => ({
-  number: '', projectId, workstreamId, supplierId: '', requestDate: '', receivedDate: '', amount: 0, currency: 'USD', status: 'Requested', remarks: '',
+  number: '', projectId, workstreamId, supplierId: '', remarks: '',
 })
 
 // ---------- PET ----------
 function validatePet(i: PetInput) {
   requireText(i.reference, 'PET reference')
   if (!i.projectId) throw new ValidationError('Please choose a project.')
-  checkDateOrder(i.submissionDate, i.approvalDate, 'submission date', 'approval date')
 }
 
 export async function createPet(input: PetInput) {
@@ -79,9 +75,7 @@ export async function updatePet(id: string, input: PetInput) {
   await db.transaction('rw', [db.petRecords, db.projectSuppliers, db.activityLogs], async () => {
     await db.petRecords.update(id, { ...input, reference: input.reference.trim(), updatedAt: nowIso() })
     if (input.supplierId) await linkSupplierToProject(input.projectId, input.supplierId)
-    const changed = old.status !== input.status
-    await logActivity('PET', id, input.projectId, changed ? 'Status Changed' : 'Updated',
-      changed ? `PET ${input.reference} status: ${old.status} → ${input.status}` : `PET ${input.reference} updated`)
+    await logActivity('PET', id, input.projectId, 'Updated', `PET ${input.reference} updated`)
   })
 }
 
@@ -95,7 +89,7 @@ export async function deletePet(id: string) {
 }
 
 export const emptyPet = (projectId = '', workstreamId = ''): PetInput => ({
-  reference: '', projectId, workstreamId, supplierId: '', submissionDate: '', approvalDate: '', status: 'Submitted', remarks: '',
+  reference: '', projectId, workstreamId, supplierId: '', remarks: '',
 })
 
 // ---------- PR ----------
@@ -196,26 +190,15 @@ export interface DeliverableCommercialInput {
   // Quotation
   quotationId?: string
   quotationNumber: string
-  quotationStatus: string
-  quotationRequestDate: string
-  quotationReceivedDate: string
-  quotationAmount: number
-  quotationCurrency: string
   // PET
   petId?: string
   petReference: string
-  petStatus: string
-  petSubmissionDate: string
-  petApprovalDate: string
   // PO & Delivery Tracking
   poId?: string
   poNumber: string
-  poStatus: string
   poIssueDate: string
   poAmount: number
   poCurrency: string
-  supplierConfirmation: string
-  hardwareDelivery: string
   expectedDelivery: string
   actualDelivery: string
   deliveryStatus: string
@@ -228,22 +211,11 @@ export function emptyDeliverableCommercial(projectId = '', workstreamId = '', su
     workstreamId,
     supplierId,
     quotationNumber: '',
-    quotationStatus: 'Requested',
-    quotationRequestDate: '',
-    quotationReceivedDate: '',
-    quotationAmount: 0,
-    quotationCurrency: 'USD',
     petReference: '',
-    petStatus: 'Submitted',
-    petSubmissionDate: '',
-    petApprovalDate: '',
     poNumber: '',
-    poStatus: 'Issued',
     poIssueDate: '',
     poAmount: 0,
     poCurrency: 'USD',
-    supplierConfirmation: 'Pending',
-    hardwareDelivery: 'Not Shipped',
     expectedDelivery: '',
     actualDelivery: '',
     deliveryStatus: 'Not Started',
@@ -284,11 +256,6 @@ export async function saveDeliverableCommercial(input: DeliverableCommercialInpu
         projectId: input.projectId,
         workstreamId: input.workstreamId,
         supplierId: input.supplierId,
-        requestDate: input.quotationRequestDate,
-        receivedDate: input.quotationReceivedDate,
-        amount: Number(input.quotationAmount) || 0,
-        currency: input.quotationCurrency || 'USD',
-        status: input.quotationStatus || 'Requested',
         remarks: input.remarks,
       }
       if (input.quotationId) {
@@ -307,9 +274,6 @@ export async function saveDeliverableCommercial(input: DeliverableCommercialInpu
         projectId: input.projectId,
         workstreamId: input.workstreamId,
         supplierId: input.supplierId,
-        submissionDate: input.petSubmissionDate,
-        approvalDate: input.petApprovalDate,
-        status: input.petStatus || 'Submitted',
         remarks: input.remarks,
       }
       if (input.petId) {
@@ -330,13 +294,10 @@ export async function saveDeliverableCommercial(input: DeliverableCommercialInpu
         supplierId: input.supplierId,
         issueDate: input.poIssueDate,
         amount: Number(input.poAmount) || 0,
-        currency: input.poCurrency || input.quotationCurrency || 'USD',
+        currency: input.poCurrency || 'USD',
         expectedDelivery: input.expectedDelivery,
         actualDelivery: input.actualDelivery,
-        status: input.poStatus || 'Issued',
-        supplierConfirmation: input.supplierConfirmation || 'Pending',
-        hardwareDelivery: input.hardwareDelivery || 'Not Shipped',
-        deliveryStatus: input.deliveryStatus || 'Pending',
+        deliveryStatus: input.deliveryStatus || 'Not Started',
         remarks: input.remarks,
       }
       if (input.poId) {

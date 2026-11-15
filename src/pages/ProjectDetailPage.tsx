@@ -1,9 +1,9 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ArrowLeft, GitBranch, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { Archive, ArrowLeft, FileSpreadsheet, GitBranch, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { db } from '@/database/db'
-import { WORKSTREAM_STATUSES, type Milestone, type Supplier, type Task, type Workstream, type WorkstreamStatus } from '@/types'
+import { WORKSTREAM_STATUSES, isArchivedStatus, type Milestone, type Supplier, type Task, type Workstream, type WorkstreamStatus } from '@/types'
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Loading, ProgressBar, Select } from '@/components/ui'
 import { ProjectForm } from '@/features/projects/ProjectForm'
 import { WorkstreamForm } from '@/features/projects/WorkstreamForm'
@@ -12,8 +12,9 @@ import { TaskForm } from '@/features/tasks/TaskForm'
 import { MilestoneForm } from '@/features/tasks/MilestoneForm'
 import { TaskTable } from '@/features/tasks/TaskTable'
 import { MilestoneTable } from '@/features/tasks/MilestoneTable'
-import { buildDeliverableCommercialRows, normalizeHardwareStatus } from '@/features/commercial/CommercialForms'
+import { CommercialBadge, buildDeliverableCommercialRows, normalizeHardwareStatus } from '@/features/commercial/CommercialForms'
 import { InlineCommercialCell, InlineProgressSelect, InlineStatusSelect } from './ProjectsPage'
+import { exportSingleProjectReport } from '@/services/exportService'
 import { deleteTask } from '@/services/taskService'
 import { deleteMilestone } from '@/services/milestoneService'
 import { deleteProject } from '@/services/projectService'
@@ -113,20 +114,30 @@ export function ProjectDetailPage() {
     <div><dt className="text-xs text-slate-500">{label}</dt><dd className="text-sm mt-0.5">{value || '—'}</dd></div>
   )
 
+  const archived = isArchivedStatus(p.status)
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start gap-3">
-        <Link to="/projects" className="mt-1 text-slate-400 hover:text-slate-700" aria-label="Back to projects"><ArrowLeft className="h-5 w-5" /></Link>
+        <Link to={archived ? '/archived' : '/projects'} className="mt-1 text-slate-400 hover:text-slate-700" aria-label={archived ? 'Back to archived' : 'Back to projects'}><ArrowLeft className="h-5 w-5" /></Link>
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-semibold">HRS {p.code}{p.deviceName ? ` · ${p.deviceName}` : ''}</h2>
             <Badge color="blue">{p.hwType || 'FT'}</Badge>
             <Badge>{p.status}</Badge>
+            {archived && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-700">
+                <Archive className="h-3 w-3" /> Archived
+              </span>
+            )}
           </div>
           {p.atePlatform && <p className="text-sm text-slate-500">ATE Platform: {p.atePlatform}</p>}
         </div>
         <div className="ml-auto flex gap-2">
-          <Button onClick={() => setEditOpen(true)}><Pencil className="h-4 w-4" /> Edit</Button>
+          <Button onClick={() => run(() => exportSingleProjectReport(p.id))}>
+            <FileSpreadsheet className="h-4 w-4 text-emerald-600" /> Export to Excel
+          </Button>
+          {!archived && <Button onClick={() => setEditOpen(true)}><Pencil className="h-4 w-4" /> Edit</Button>}
           <Button onClick={() => setDeleteOpen(true)}><Trash2 className="h-4 w-4 text-red-500" /> Delete</Button>
         </div>
       </div>
@@ -174,18 +185,22 @@ export function ProjectDetailPage() {
         <Card
           title={`Deliverables & Commercial Tracking (Branches of HRS ${p.code})`}
           action={
-            <Button size="sm" variant="primary" onClick={() => { setWsEditing(undefined); setWsOpen(true) }}>
-              <Plus className="h-3.5 w-3.5" /> Add Deliverable
-            </Button>
+            !archived ? (
+              <Button size="sm" variant="primary" onClick={() => { setWsEditing(undefined); setWsOpen(true) }}>
+                <Plus className="h-3.5 w-3.5" /> Add Deliverable
+              </Button>
+            ) : undefined
           }
         >
           {workstreams.length === 0 ? (
             <EmptyState title="No deliverables yet" hint="Add PCB, Socket, Handler Kit, Stiffener, Probe Card, Probe Head, or Others deliverables for this project." />
           ) : (
-            <Table head={['Deliverable Branch', 'MPN', 'Supplier', 'Status', 'Progress', 'Delivery Dates', 'Commercial & Hardware Status (Quote · PET · PO)', 'Remarks', 'Actions']}>
+            <Table head={['Deliverable Branch', 'MPN', 'Supplier', 'Status', 'Progress', 'Delivery Dates', 'Commercial & Hardware Status (Quote · PET · PO)', 'Remarks', ...(archived ? [] : ['Actions'])]}>
               {workstreams.map((w, idx) => {
                 const isLast = idx === workstreams.length - 1
                 const comm = commercialRows.find((r) => r.workstream.id === w.id)
+                const q = comm?.quotation
+                const pet = comm?.pet
                 const po = comm?.po
                 const hwStatus = normalizeHardwareStatus(po)
                 const late = po && !po.actualDelivery && isPast(po.expectedDelivery) && hwStatus !== 'Delivered'
@@ -201,21 +216,29 @@ export function ProjectDetailPage() {
                     <td className="font-mono text-xs text-slate-600 whitespace-nowrap">{w.mpn || '—'}</td>
                     <td>{supName(w.supplierId)}</td>
                     <td>
-                      <InlineStatusSelect
-                        value={w.status}
-                        options={WORKSTREAM_STATUSES}
-                        onChange={async (next) => {
-                          try { await updateWorkstream(w.id, { ...w, status: next as WorkstreamStatus }) } catch (e) { setError(errorMessage(e)) }
-                        }}
-                      />
+                      {archived ? (
+                        <Badge>{w.status}</Badge>
+                      ) : (
+                        <InlineStatusSelect
+                          value={w.status}
+                          options={WORKSTREAM_STATUSES}
+                          onChange={async (next) => {
+                            try { await updateWorkstream(w.id, { ...w, status: next as WorkstreamStatus }) } catch (e) { setError(errorMessage(e)) }
+                          }}
+                        />
+                      )}
                     </td>
                     <td className="w-32">
-                      <InlineProgressSelect
-                        value={w.progress}
-                        onChange={async (next) => {
-                          try { await updateWorkstream(w.id, { ...w, progress: next }) } catch (e) { setError(errorMessage(e)) }
-                        }}
-                      />
+                      {archived ? (
+                        <ProgressBar value={w.progress} />
+                      ) : (
+                        <InlineProgressSelect
+                          value={w.progress}
+                          onChange={async (next) => {
+                            try { await updateWorkstream(w.id, { ...w, progress: next }) } catch (e) { setError(errorMessage(e)) }
+                          }}
+                        />
+                      )}
                     </td>
                     <td className="whitespace-nowrap text-xs">
                       {po && (po.expectedDelivery || po.actualDelivery) ? (
@@ -226,19 +249,30 @@ export function ProjectDetailPage() {
                       ) : '—'}
                     </td>
                     <td>
-                      <InlineCommercialCell workstream={w} comm={comm} onError={setError} />
+                      {archived ? (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {q?.number && <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[11px] text-blue-900"><b>Quote:</b> {q.number}</span>}
+                          {pet?.reference && <span className="rounded border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[11px] text-indigo-900"><b>PET:</b> {pet.reference}</span>}
+                          {po?.number && <span className="rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-900"><b>PO:</b> {po.number}</span>}
+                          <CommercialBadge status={hwStatus} />
+                        </div>
+                      ) : (
+                        <InlineCommercialCell workstream={w} comm={comm} onError={setError} />
+                      )}
                     </td>
                     <td className="text-slate-500 max-w-xs truncate">{w.remarks || po?.remarks || '—'}</td>
-                    <td>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="sm" title="Edit Deliverable & Commercial" onClick={() => { setWsEditing(w); setWsOpen(true) }}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="sm" aria-label="Delete deliverable" onClick={() => setWsDeleting(w)}>
-                          <Trash2 className="h-3.5 w-3.5 text-red-500" />
-                        </Button>
-                      </div>
-                    </td>
+                    {!archived && (
+                      <td>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="sm" title="Edit Deliverable & Commercial" onClick={() => { setWsEditing(w); setWsOpen(true) }}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="sm" aria-label="Delete deliverable" onClick={() => setWsDeleting(w)}>
+                            <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                          </Button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 )
               })}
@@ -319,7 +353,7 @@ export function ProjectDetailPage() {
         onConfirm={() => run(async () => { await deleteWorkstream(wsDeleting!.id); setWsDeleting(undefined) })}
         message={<>Delete deliverable <b>{wsDeleting ? deliverableDisplayName(wsDeleting) : ''}</b>? Tasks and milestones linked to it are kept but no longer assigned to a deliverable.</>} />
       <ConfirmDialog open={deleteOpen} title="Delete project?" onCancel={() => setDeleteOpen(false)}
-        onConfirm={() => run(async () => { await deleteProject(p.id); navigate('/projects') })}
+        onConfirm={() => run(async () => { await deleteProject(p.id); navigate(archived ? '/archived' : '/projects') })}
         message={<>This permanently deletes <b>HRS {p.code}</b> and everything linked to it. This cannot be undone.</>} />
     </div>
   )

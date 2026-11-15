@@ -11,6 +11,10 @@ export interface BaseRecord {
 export const PROJECT_STATUSES = ['Planning', 'In Progress', 'On Hold', 'Delayed', 'Completed', 'Cancelled'] as const
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number]
 
+export const ACTIVE_PROJECT_STATUSES = ['Planning', 'In Progress', 'On Hold', 'Delayed'] as const
+export const ARCHIVED_PROJECT_STATUSES = ['Completed', 'Cancelled'] as const
+export const isArchivedStatus = (status: string) => status === 'Completed' || status === 'Cancelled'
+
 export const PRIORITIES = ['Low', 'Medium', 'High', 'Critical'] as const
 export type Priority = (typeof PRIORITIES)[number]
 
@@ -19,6 +23,9 @@ export type HwType = (typeof HW_TYPES)[number]
 
 export const HARDWARE_CATEGORIES = ['PCB', 'Socket', 'Handler Kit', 'Stiffener', 'Probe Card', 'Probe Head', 'Others'] as const
 export type HardwareCategory = (typeof HARDWARE_CATEGORIES)[number] | string
+
+export const NON_NPI_CATEGORIES = ['DOE', 'Web Development', 'Process Improvement', 'Automation / Tooling', 'Ad-hoc Task', 'Others'] as const
+export type NonNpiCategory = (typeof NON_NPI_CATEGORIES)[number] | string
 
 export const HARDWARE_STATUSES = ['Not Started', 'Design', 'Fabrication', 'In Delivery', 'Delivered'] as const
 export type HardwareStatus = (typeof HARDWARE_STATUSES)[number]
@@ -39,6 +46,8 @@ export const SUPPLIER_CATEGORIES = ['PCB Fabrication', 'Test Socket', 'Handler K
 export interface Project extends BaseRecord {
   code: string
   name: string
+  isNonNpi?: boolean
+  nonNpiCategory?: string
   hwType?: HwType
   deviceName: string
   atePlatform: string
@@ -115,11 +124,6 @@ export interface Quotation extends BaseRecord {
   projectId: string
   workstreamId?: string // linked Deliverable (Workstream)
   supplierId: string
-  requestDate: string
-  receivedDate: string
-  amount: number
-  currency: string
-  status: string
   remarks: string
 }
 
@@ -128,9 +132,6 @@ export interface PetRecord extends BaseRecord {
   projectId: string
   workstreamId?: string // linked Deliverable (Workstream)
   supplierId: string
-  submissionDate: string
-  approvalDate: string
-  status: string
   remarks: string
 }
 
@@ -154,7 +155,7 @@ export interface PoRecord extends BaseRecord {
   currency: string
   expectedDelivery: string
   actualDelivery: string
-  status: string
+  status?: string
   supplierConfirmation?: string
   hardwareDelivery?: string
   deliveryStatus?: string

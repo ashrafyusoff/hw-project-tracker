@@ -5,7 +5,9 @@ import { ProjectsPage } from '@/pages/ProjectsPage'
 import { ProjectDetailPage } from '@/pages/ProjectDetailPage'
 import { SuppliersPage } from '@/pages/SuppliersPage'
 import { TasksPage } from '@/pages/TasksPage'
+import { NonNpiPage } from '@/pages/NonNpiPage'
 import { CommercialPage } from '@/pages/CommercialPage'
+import { ArchivedPage } from '@/pages/ArchivedPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 
 // One app, one layout. Only the middle part changes when you click the sidebar (client-side navigation).
@@ -19,7 +21,9 @@ export default function App() {
           <Route path="projects/:id" element={<ProjectDetailPage />} />
           <Route path="suppliers" element={<SuppliersPage />} />
           <Route path="tasks" element={<TasksPage />} />
+          <Route path="non-npi" element={<NonNpiPage />} />
           <Route path="commercial" element={<CommercialPage />} />
+          <Route path="archived" element={<ArchivedPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<OverviewPage />} />
         </Route>
