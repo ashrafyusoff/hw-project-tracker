@@ -33,7 +33,7 @@ export function TaskTable({ tasks, projects, workstreams, suppliers, showProject
   const proj = (id: string) => projects.find((p) => p.id === id)?.code ?? '—'
   const ws = (id: string) => workstreams.find((w) => w.id === id)?.name ?? '—'
   const sup = (id: string) => suppliers.find((s) => s.id === id)?.name ?? '—'
-  const head = [...(showProject ? ['Project'] : []), 'Task', 'Deliverable', 'Assignee', 'Supplier', 'Start', 'Due', 'Priority', 'Status', 'Progress', '']
+  const head = [...(showProject ? ['HRS Number'] : []), 'Task', 'Deliverable', 'Supplier', 'Start', 'Due', 'Priority', 'Status', 'Progress', '']
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -44,7 +44,6 @@ export function TaskTable({ tasks, projects, workstreams, suppliers, showProject
               {showProject && <td className="px-3 py-2.5 font-medium text-primary whitespace-nowrap">{proj(t.projectId)}</td>}
               <td className="px-3 font-medium min-w-[200px]">{t.name}</td>
               <td className="px-3 text-slate-500">{ws(t.workstreamId)}</td>
-              <td className="px-3">{t.assignee || '—'}</td>
               <td className="px-3">{sup(t.supplierId)}</td>
               <td className="px-3 whitespace-nowrap">{formatDate(t.startDate)}</td>
               <td className="px-3 whitespace-nowrap">

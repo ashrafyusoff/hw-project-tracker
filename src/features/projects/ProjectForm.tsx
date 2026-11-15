@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { HW_TYPES, PROJECT_STATUSES, PRIORITIES, PROGRESS_STEPS, type Project } from '@/types'
+import { HW_TYPES, PROJECT_STATUSES, PROGRESS_STEPS, type Project } from '@/types'
 import { emptyProject, createProject, updateProject, type ProjectInput } from '@/services/projectService'
 import { todayStr } from '@/utils/helpers'
 import { errorMessage } from '@/utils/validation'
@@ -64,9 +64,6 @@ function ProjectFormBody({ project, onClose }: { project?: Project; onClose: () 
         </Field>
         <Field label="ATE Platform">
           <Input value={form.atePlatform} onChange={(e) => set('atePlatform', e.target.value)} />
-        </Field>
-        <Field label="Priority">
-          <Select options={PRIORITIES} value={form.priority} onChange={(e) => set('priority', e.target.value as ProjectInput['priority'])} />
         </Field>
         <Field label="Status">
           <Select options={PROJECT_STATUSES} value={form.status} onChange={(e) => set('status', e.target.value as ProjectInput['status'])} />

@@ -3,22 +3,21 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { ArrowLeft, GitBranch, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { db } from '@/database/db'
-import type { Milestone, Supplier, Task, Workstream } from '@/types'
+import { WORKSTREAM_STATUSES, type Milestone, type Supplier, type Task, type Workstream, type WorkstreamStatus } from '@/types'
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Loading, ProgressBar, Select } from '@/components/ui'
 import { ProjectForm } from '@/features/projects/ProjectForm'
 import { WorkstreamForm } from '@/features/projects/WorkstreamForm'
+import { ProjectGanttChart } from '@/features/projects/ProjectGanttChart'
 import { TaskForm } from '@/features/tasks/TaskForm'
 import { MilestoneForm } from '@/features/tasks/MilestoneForm'
 import { TaskTable } from '@/features/tasks/TaskTable'
 import { MilestoneTable } from '@/features/tasks/MilestoneTable'
-import {
-  CommercialBadge,
-  buildDeliverableCommercialRows,
-} from '@/features/commercial/CommercialForms'
+import { buildDeliverableCommercialRows, normalizeHardwareStatus } from '@/features/commercial/CommercialForms'
+import { InlineCommercialCell, InlineProgressSelect, InlineStatusSelect } from './ProjectsPage'
 import { deleteTask } from '@/services/taskService'
 import { deleteMilestone } from '@/services/milestoneService'
 import { deleteProject } from '@/services/projectService'
-import { deleteWorkstream } from '@/services/workstreamService'
+import { deleteWorkstream, updateWorkstream } from '@/services/workstreamService'
 import { linkSupplierToProject, unlinkSupplierFromProject } from '@/services/supplierService'
 import { formatDate, formatDateTime, isPast } from '@/utils/helpers'
 import { errorMessage } from '@/utils/validation'
@@ -123,7 +122,6 @@ export function ProjectDetailPage() {
             <h2 className="text-lg font-semibold">HRS {p.code}{p.deviceName ? ` · ${p.deviceName}` : ''}</h2>
             <Badge color="blue">{p.hwType || 'FT'}</Badge>
             <Badge>{p.status}</Badge>
-            <Badge>{p.priority}</Badge>
           </div>
           {p.atePlatform && <p className="text-sm text-slate-500">ATE Platform: {p.atePlatform}</p>}
         </div>
@@ -144,20 +142,32 @@ export function ProjectDetailPage() {
       </div>
 
       {tab === 'Overview' && (
-        <Card>
-          <div className="mb-4 max-w-sm"><p className="text-xs text-slate-500 mb-1">Overall progress</p><ProgressBar value={p.progress} /></div>
-          <dl className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <Field label="HRS Number" value={p.code} />
-            <Field label="HW Type" value={p.hwType || 'FT'} />
-            <Field label="Device Name" value={p.deviceName} />
-            <Field label="ATE Platform" value={p.atePlatform} />
-            <Field label="Start Date (Creation Date)" value={formatDate(p.startDate)} />
-            <Field label="HW Required Date" value={formatDate(p.baselineDate)} />
-          </dl>
-          <dl className="grid gap-4 mt-4">
-            <Field label="Description" value={p.description} />
-          </dl>
-        </Card>
+        <div className="space-y-4">
+          <Card>
+            <div className="mb-4 max-w-sm"><p className="text-xs text-slate-500 mb-1">Overall progress</p><ProgressBar value={p.progress} /></div>
+            <dl className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <Field label="HRS Number" value={p.code} />
+              <Field label="HW Type" value={p.hwType || 'FT'} />
+              <Field label="Device Name" value={p.deviceName} />
+              <Field label="ATE Platform" value={p.atePlatform} />
+              <Field label="Start Date (Creation Date)" value={formatDate(p.startDate)} />
+              <Field label="HW Required Date" value={formatDate(p.baselineDate)} />
+            </dl>
+            <dl className="grid gap-4 mt-4">
+              <Field label="Description" value={p.description} />
+            </dl>
+          </Card>
+
+          <Card title={`NPI / HRS ${p.code} Master Gantt Chart`}>
+            <ProjectGanttChart
+              project={p}
+              workstreams={workstreams}
+              commercialRows={commercialRows}
+              milestones={milestones}
+              tasks={tasks}
+            />
+          </Card>
+        </div>
       )}
 
       {tab === 'Deliverables & Commercial' && (
@@ -172,14 +182,12 @@ export function ProjectDetailPage() {
           {workstreams.length === 0 ? (
             <EmptyState title="No deliverables yet" hint="Add PCB, Socket, Handler Kit, Stiffener, Probe Card, Probe Head, or Others deliverables for this project." />
           ) : (
-            <Table head={['Deliverable Branch', 'MPN', 'Supplier', 'Status', 'Progress', 'Quotation #', 'PET #', 'Purchase Order (PO)', 'Hardware Status & Delivery', 'Remarks', '']}>
+            <Table head={['Deliverable Branch', 'MPN', 'Supplier', 'Status', 'Progress', 'Delivery Dates', 'Commercial & Hardware Status (Quote · PET · PO)', 'Remarks', 'Actions']}>
               {workstreams.map((w, idx) => {
                 const isLast = idx === workstreams.length - 1
                 const comm = commercialRows.find((r) => r.workstream.id === w.id)
-                const q = comm?.quotation
-                const pet = comm?.pet
                 const po = comm?.po
-                const hwStatus = po?.deliveryStatus || 'Not Started'
+                const hwStatus = normalizeHardwareStatus(po)
                 const late = po && !po.actualDelivery && isPast(po.expectedDelivery) && hwStatus !== 'Delivered'
                 return (
                   <tr key={w.id}>
@@ -192,28 +200,33 @@ export function ProjectDetailPage() {
                     </td>
                     <td className="font-mono text-xs text-slate-600 whitespace-nowrap">{w.mpn || '—'}</td>
                     <td>{supName(w.supplierId)}</td>
-                    <td><Badge>{w.status}</Badge></td>
-                    <td className="w-32"><ProgressBar value={w.progress} /></td>
-                    <td className="whitespace-nowrap font-medium">{q?.number || '—'}</td>
-                    <td className="whitespace-nowrap font-medium">{pet?.reference || '—'}</td>
                     <td>
-                      {po ? (
-                        <div className="text-xs space-y-0.5">
-                          <div className="font-semibold text-slate-800">{po.number}</div>
-                          {po.amount > 0 && <div className="text-slate-600">{po.currency} {po.amount.toLocaleString()}</div>}
-                          {po.issueDate && <div className="text-slate-400">Issued: {formatDate(po.issueDate)}</div>}
+                      <InlineStatusSelect
+                        value={w.status}
+                        options={WORKSTREAM_STATUSES}
+                        onChange={async (next) => {
+                          try { await updateWorkstream(w.id, { ...w, status: next as WorkstreamStatus }) } catch (e) { setError(errorMessage(e)) }
+                        }}
+                      />
+                    </td>
+                    <td className="w-32">
+                      <InlineProgressSelect
+                        value={w.progress}
+                        onChange={async (next) => {
+                          try { await updateWorkstream(w.id, { ...w, progress: next }) } catch (e) { setError(errorMessage(e)) }
+                        }}
+                      />
+                    </td>
+                    <td className="whitespace-nowrap text-xs">
+                      {po && (po.expectedDelivery || po.actualDelivery) ? (
+                        <div className={late ? 'text-red-600 font-semibold' : 'text-slate-600'}>
+                          Exp: {formatDate(po.expectedDelivery)}
+                          {po.actualDelivery && <span className="block text-[11px] text-emerald-700">Act: {formatDate(po.actualDelivery)}</span>}
                         </div>
                       ) : '—'}
                     </td>
                     <td>
-                      <div className="space-y-0.5">
-                        <CommercialBadge status={hwStatus} />
-                        {po && (po.expectedDelivery || po.actualDelivery) && (
-                          <div className={`text-[11px] whitespace-nowrap ${late ? 'text-red-600 font-semibold' : 'text-slate-500'}`}>
-                            Exp: {formatDate(po.expectedDelivery)} · Act: {formatDate(po.actualDelivery)}
-                          </div>
-                        )}
-                      </div>
+                      <InlineCommercialCell workstream={w} comm={comm} onError={setError} />
                     </td>
                     <td className="text-slate-500 max-w-xs truncate">{w.remarks || po?.remarks || '—'}</td>
                     <td>
@@ -266,8 +279,8 @@ export function ProjectDetailPage() {
 
       {tab === 'Milestones' && (
         <Card title="Milestones" className="[&>div]:!p-0" action={<Button size="sm" variant="primary" onClick={() => { setMsEditing(undefined); setMsOpen(true) }}><Plus className="h-3.5 w-3.5" /> Add Milestone</Button>}>
-          {milestones.length === 0 ? <EmptyState title="No milestones" hint="Add milestones such as Design Freeze or Hardware Delivery." /> : (
-            <MilestoneTable milestones={[...milestones].sort((x, y) => x.targetDate.localeCompare(y.targetDate))} projects={[p]} workstreams={workstreams} showProject={false}
+          {milestones.length === 0 ? <EmptyState title="No milestones" hint="Add milestones such as Tape Out Date or Drawing Approval Cut-off." /> : (
+            <MilestoneTable milestones={[...milestones].sort((x, y) => x.targetDate.localeCompare(y.targetDate))} projects={[p]} showProject={false}
               onEdit={(m) => { setMsEditing(m); setMsOpen(true) }} onDelete={setMsDeleting} />
           )}
         </Card>

@@ -22,12 +22,39 @@ function Body({ task, defaultProjectId, onClose }: { task?: Task; defaultProject
   const [error, setError] = useState('')
   const set = <K extends keyof TaskInput>(k: K, v: TaskInput[K]) => setForm((f) => ({ ...f, [k]: v }))
 
+  const selectedDeliverable = workstreams.find((w) => w.id === form.workstreamId)
+  const effectiveSupplierId = selectedDeliverable ? selectedDeliverable.supplierId : form.supplierId
+  const supplierName = suppliers.find((s) => s.id === effectiveSupplierId)?.name ?? '— None (set in Deliverable) —'
+
+  function handleProjectChange(projectId: string) {
+    setForm((f) => ({
+      ...f,
+      projectId,
+      workstreamId: '',
+      supplierId: '',
+    }))
+  }
+
+  function handleDeliverableChange(workstreamId: string) {
+    const ws = workstreams.find((w) => w.id === workstreamId)
+    setForm((f) => ({
+      ...f,
+      workstreamId,
+      supplierId: ws?.supplierId || '',
+    }))
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
     try {
-      if (task) await updateTask(task.id, form)
-      else await createTask(form)
+      const payload: TaskInput = {
+        ...form,
+        assignee: '',
+        supplierId: effectiveSupplierId,
+      }
+      if (task) await updateTask(task.id, payload)
+      else await createTask(payload)
       onClose()
     } catch (err) {
       setError(errorMessage(err))
@@ -39,25 +66,34 @@ function Body({ task, defaultProjectId, onClose }: { task?: Task; defaultProject
       <FormError message={error} />
       <Field label="Task Name" required><Input value={form.name} onChange={(e) => set('name', e.target.value)} /></Field>
       <div className="grid sm:grid-cols-2 gap-3">
-        <Field label="Project" required>
-          <Select value={form.projectId} onChange={(e) => setForm((f) => ({ ...f, projectId: e.target.value, workstreamId: '' }))}
-            options={[{ value: '', label: 'Select project…' }, ...projects.map((p) => ({ value: p.id, label: `${p.code} – ${p.name}` }))]} />
+        <Field label="Project (HRS Number)" required>
+          <Select
+            value={form.projectId}
+            onChange={(e) => handleProjectChange(e.target.value)}
+            options={[{ value: '', label: 'Select project…' }, ...projects.map((p) => ({ value: p.id, label: `${p.code}${p.deviceName ? ` – ${p.deviceName}` : ''}` }))]}
+          />
         </Field>
         <Field label="Deliverable">
-          <Select value={form.workstreamId} onChange={(e) => set('workstreamId', e.target.value)}
-            options={[{ value: '', label: '— None —' }, ...workstreams.filter((w) => w.projectId === form.projectId).map((w) => ({ value: w.id, label: w.name }))]} />
+          <Select
+            value={form.workstreamId}
+            onChange={(e) => handleDeliverableChange(e.target.value)}
+            options={[
+              { value: '', label: '— None —' },
+              ...workstreams
+                .filter((w) => w.projectId === form.projectId)
+                .map((w) => ({ value: w.id, label: w.category === 'Others' && w.name !== 'Others' ? `Others (${w.name})` : w.name || w.category })),
+            ]}
+          />
         </Field>
-        <Field label="Assigned Person"><Input value={form.assignee} onChange={(e) => set('assignee', e.target.value)} /></Field>
-        <Field label="Supplier">
-          <Select value={form.supplierId} onChange={(e) => set('supplierId', e.target.value)}
-            options={[{ value: '', label: '— None —' }, ...suppliers.map((s) => ({ value: s.id, label: s.name }))]} />
+        <Field label="Supplier (Auto-filled from Deliverable)">
+          <Input value={supplierName} disabled readOnly className="bg-slate-100 text-slate-600 cursor-not-allowed" />
         </Field>
+        <Field label="Status"><Select options={TASK_STATUSES} value={form.status} onChange={(e) => set('status', e.target.value as TaskInput['status'])} /></Field>
         <Field label="Start Date"><Input type="date" value={form.startDate} onChange={(e) => set('startDate', e.target.value)} /></Field>
         <Field label="Due Date"><Input type="date" value={form.dueDate} onChange={(e) => set('dueDate', e.target.value)} /></Field>
         <Field label="Completion Date"><Input type="date" value={form.completionDate} onChange={(e) => set('completionDate', e.target.value)} /></Field>
         <Field label="Progress (%)"><Input type="number" min={0} max={100} value={form.progress} onChange={(e) => set('progress', Number(e.target.value))} /></Field>
         <Field label="Priority"><Select options={PRIORITIES} value={form.priority} onChange={(e) => set('priority', e.target.value as TaskInput['priority'])} /></Field>
-        <Field label="Status"><Select options={TASK_STATUSES} value={form.status} onChange={(e) => set('status', e.target.value as TaskInput['status'])} /></Field>
       </div>
       <Field label="Remarks"><Textarea value={form.remarks} onChange={(e) => set('remarks', e.target.value)} /></Field>
       <div className="flex justify-end gap-2">

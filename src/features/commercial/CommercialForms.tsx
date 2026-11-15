@@ -20,7 +20,9 @@ export function CommercialBadge({ status }: { status?: string }) {
   const color = s.includes('deliver') && !s.includes('in deliver') ? 'green'
     : s.includes('approv') || s.includes('accept') || s.includes('confirm') || s.includes('track') || s.includes('received') ? 'green'
     : s.includes('delay') || s.includes('reject') || s.includes('cancel') || s.includes('expir') ? 'red'
-    : s.includes('fabricat') || s.includes('in deliver') || s.includes('transit') || s.includes('pend') || s.includes('submit') || s.includes('request') ? 'amber'
+    : s.includes('design') ? 'blue'
+    : s.includes('in deliver') || s.includes('transit') ? 'violet'
+    : s.includes('fabricat') || s.includes('pend') || s.includes('submit') || s.includes('request') ? 'amber'
     : s.includes('not started') ? 'grey' : 'blue'
   return <Badge color={color}>{status}</Badge>
 }
@@ -84,14 +86,15 @@ export function buildDeliverableCommercialRows(
   return rows
 }
 
-function normalizeHardwareStatus(po?: PoRecord): string {
+export function normalizeHardwareStatus(po?: PoRecord): string {
   const raw = po?.deliveryStatus || po?.hardwareDelivery || ''
   if (HARDWARE_STATUSES.includes(raw as (typeof HARDWARE_STATUSES)[number])) return raw
   const lower = raw.toLowerCase()
   if (lower.includes('deliver') && !lower.includes('in deliver')) return 'Delivered'
   if (lower.includes('received')) return 'Delivered'
   if (lower.includes('ship') || lower.includes('transit') || lower.includes('in deliver')) return 'In Delivery'
-  if (lower.includes('fabricat') || lower.includes('track')) return 'In Fabrication'
+  if (lower.includes('fabricat') || lower.includes('track')) return 'Fabrication'
+  if (lower.includes('design')) return 'Design'
   return 'Not Started'
 }
 

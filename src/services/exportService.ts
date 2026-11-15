@@ -36,7 +36,7 @@ export async function buildSheets(name: ReportName): Promise<Record<string, Row[
       return {
         Projects: projects.map((p) => ({
           'HRS Number': p.code, 'HW Type': p.hwType || 'FT', 'Device Name': p.deviceName, 'ATE Platform': p.atePlatform,
-          Priority: p.priority, Status: p.status, 'Progress %': p.progress, 'Start Date': p.startDate,
+          Status: p.status, 'Progress %': p.progress, 'Start Date': p.startDate,
           'HW Required Date': p.baselineDate, Description: p.description,
         })),
         Deliverables: deliverables.map((w) => ({
@@ -47,11 +47,11 @@ export async function buildSheets(name: ReportName): Promise<Record<string, Row[
     }
     case 'Tasks':
       return { Tasks: (await db.tasks.toArray()).map((t) => ({
-        Task: t.name, 'HRS Number': L.proj(t.projectId), Deliverable: L.ws(t.workstreamId), Assignee: t.assignee, Supplier: L.sup(t.supplierId),
+        Task: t.name, 'HRS Number': L.proj(t.projectId), Deliverable: L.ws(t.workstreamId), Supplier: L.sup(t.supplierId),
         Start: t.startDate, Due: t.dueDate, Completed: t.completionDate, Priority: t.priority, Status: t.status, 'Progress %': t.progress, Remarks: t.remarks })) }
     case 'Milestones':
       return { Milestones: (await db.milestones.toArray()).map((m) => ({
-        Milestone: m.name, 'HRS Number': L.proj(m.projectId), Deliverable: L.ws(m.workstreamId), Description: m.description,
+        Milestone: m.name, 'HRS Number': L.proj(m.projectId), Description: m.description,
         Target: m.targetDate, Actual: m.actualDate, Status: m.status, Remarks: m.remarks })) }
     case 'Suppliers':
       return { Suppliers: (await db.suppliers.toArray()).map((s) => ({

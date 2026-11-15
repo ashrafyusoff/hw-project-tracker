@@ -59,7 +59,8 @@ function normalizeHardwareStatus(po?: PoRecord): string {
   if (lower.includes('deliver') && !lower.includes('in deliver')) return 'Delivered'
   if (lower.includes('received')) return 'Delivered'
   if (lower.includes('ship') || lower.includes('transit') || lower.includes('in deliver')) return 'In Delivery'
-  if (lower.includes('fabricat') || lower.includes('track')) return 'In Fabrication'
+  if (lower.includes('fabricat') || lower.includes('track')) return 'Fabrication'
+  if (lower.includes('design')) return 'Design'
   return 'Not Started'
 }
 

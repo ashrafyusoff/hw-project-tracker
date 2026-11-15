@@ -20,7 +20,7 @@ export type HwType = (typeof HW_TYPES)[number]
 export const HARDWARE_CATEGORIES = ['PCB', 'Socket', 'Handler Kit', 'Stiffener', 'Probe Card', 'Probe Head', 'Others'] as const
 export type HardwareCategory = (typeof HARDWARE_CATEGORIES)[number] | string
 
-export const HARDWARE_STATUSES = ['Not Started', 'In Fabrication', 'In Delivery', 'Delivered'] as const
+export const HARDWARE_STATUSES = ['Not Started', 'Design', 'Fabrication', 'In Delivery', 'Delivered'] as const
 export type HardwareStatus = (typeof HARDWARE_STATUSES)[number]
 
 export const PROGRESS_STEPS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100] as const

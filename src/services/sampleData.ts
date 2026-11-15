@@ -70,14 +70,14 @@ export async function loadSampleData() {
   const ms = (projectId: string, workstreamId: string, name: string, description: string, target: number, status: MS, actual = '') =>
     ({ ...base(), projectId, workstreamId, name, description, targetDate: d(target), actualDate: actual, status, remarks: '' })
   const milestones = [
-    ms(falcon.id, wFalconPcb.id, 'Design Freeze', 'Schematic and layout frozen.', -10, 'Completed', d(-10)),
-    ms(falcon.id, wFalconPcb.id, 'Gerber Sign-off', 'Final layout sign-off before fabrication.', 6, 'In Progress'),
-    ms(falcon.id, wFalconPcb.id, 'PCB Fabrication Complete', 'Bare boards received from Nova.', 18, 'In Progress'),
-    ms(falcon.id, wFalconSock.id, 'Socket Delivery', 'Sockets delivered and inspected.', 35, 'Not Started'),
+    ms(falcon.id, '', 'Tape Out Date', 'Silicon tape-out frozen.', -10, 'Completed', d(-10)),
+    ms(falcon.id, '', 'Drawing Approval Cut-off', 'Final mechanical & layout drawing approval cut-off.', 6, 'In Progress'),
+    ms(falcon.id, '', 'PCB Fabrication Complete', 'Bare boards received from Nova.', 18, 'In Progress'),
+    ms(falcon.id, '', 'Socket Delivery', 'Sockets delivered and inspected.', 35, 'Not Started'),
     ms(falcon.id, '', 'Hardware Ready for Debug', 'Assembled hardware ready on tester.', 45, 'Not Started'),
-    ms(orion.id, wOrionPcb.id, 'PCB Fabrication Complete', 'Original date missed.', -3, 'Delayed'),
-    ms(orion.id, wOrionHandler.id, 'Handler Kit 3D Freeze', '3D mechanical drawing approved.', 11, 'In Progress'),
-    ms(orion.id, wOrionHandler.id, 'Handler Kit Delivery', 'Change kit shipped from Japan.', 40, 'Not Started'),
+    ms(orion.id, '', 'PCB Fabrication Complete', 'Original date missed.', -3, 'Delayed'),
+    ms(orion.id, '', 'Handler Kit 3D Freeze', '3D mechanical drawing approved.', 11, 'In Progress'),
+    ms(orion.id, '', 'Handler Kit Delivery', 'Change kit shipped from Japan.', 40, 'Not Started'),
     ms(atlas.id, '', 'Project Kick-off', 'Requirements review with design team.', 8, 'Not Started'),
     ms(lynx.id, '', 'Hardware Release', 'Final hardware release.', -42, 'Completed', d(-42)),
   ]
@@ -98,10 +98,10 @@ export async function loadSampleData() {
     { ...base(), reference: 'PET-24-0088', projectId: lynx.id, workstreamId: wLynxSock.id, supplierId: meridian.id, submissionDate: d(-164), approvalDate: d(-161), status: 'Approved', remarks: '' },
   ]
   const poRecords = [
-    { ...base(), number: 'PO-4500711', projectId: falcon.id, workstreamId: wFalconPcb.id, supplierId: nova.id, issueDate: d(-33), amount: 8450, currency: 'USD', expectedDelivery: d(20), actualDelivery: '', status: 'Issued', supplierConfirmation: 'Confirmed', hardwareDelivery: 'In Fabrication', deliveryStatus: 'In Fabrication', remarks: '' },
-    { ...base(), number: 'PO-4500728', projectId: falcon.id, workstreamId: wFalconSock.id, supplierId: meridian.id, issueDate: d(-12), amount: 3200, currency: 'USD', expectedDelivery: d(35), actualDelivery: '', status: 'Issued', supplierConfirmation: 'Confirmed', hardwareDelivery: 'In Fabrication', deliveryStatus: 'In Delivery', remarks: '' },
-    { ...base(), number: 'PO-4500690', projectId: orion.id, workstreamId: wOrionPcb.id, supplierId: nova.id, issueDate: d(-65), amount: 11200, currency: 'USD', expectedDelivery: d(-5), actualDelivery: '', status: 'Issued', supplierConfirmation: 'Revised Schedule', hardwareDelivery: 'In Fabrication', deliveryStatus: 'In Fabrication', remarks: 'PCB fabrication slipped due to laminate shortage.' },
-    { ...base(), number: 'PO-4500650', projectId: lynx.id, workstreamId: wLynxSock.id, supplierId: meridian.id, issueDate: d(-160), amount: 2900, currency: 'USD', expectedDelivery: d(-55), actualDelivery: d(-52), status: 'Delivered', supplierConfirmation: 'Confirmed', hardwareDelivery: 'Received & Inspected', deliveryStatus: 'Delivered', remarks: '' },
+    { ...base(), number: 'PO-4500711', projectId: falcon.id, workstreamId: wFalconPcb.id, supplierId: nova.id, issueDate: d(-33), amount: 8450, currency: 'USD', expectedDelivery: d(20), actualDelivery: '', status: 'Issued', supplierConfirmation: 'Confirmed', hardwareDelivery: 'Fabrication', deliveryStatus: 'Fabrication', remarks: '' },
+    { ...base(), number: 'PO-4500728', projectId: falcon.id, workstreamId: wFalconSock.id, supplierId: meridian.id, issueDate: d(-12), amount: 3200, currency: 'USD', expectedDelivery: d(35), actualDelivery: '', status: 'Issued', supplierConfirmation: 'Confirmed', hardwareDelivery: 'In Delivery', deliveryStatus: 'In Delivery', remarks: '' },
+    { ...base(), number: 'PO-4500690', projectId: orion.id, workstreamId: wOrionPcb.id, supplierId: nova.id, issueDate: d(-65), amount: 11200, currency: 'USD', expectedDelivery: d(-5), actualDelivery: '', status: 'Issued', supplierConfirmation: 'Revised Schedule', hardwareDelivery: 'Fabrication', deliveryStatus: 'Fabrication', remarks: 'PCB fabrication slipped due to laminate shortage.' },
+    { ...base(), number: 'PO-4500650', projectId: lynx.id, workstreamId: wLynxSock.id, supplierId: meridian.id, issueDate: d(-160), amount: 2900, currency: 'USD', expectedDelivery: d(-55), actualDelivery: d(-52), status: 'Delivered', supplierConfirmation: 'Confirmed', hardwareDelivery: 'Delivered', deliveryStatus: 'Delivered', remarks: '' },
   ]
 
   // ---------- Meetings & actions ----------
