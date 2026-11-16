@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CheckSquare, ChevronLeft, ChevronRight, ClipboardPaste, Copy, Flag, GripVertical, Scissors, X } from 'lucide-react'
 import type { Milestone, Project, Task } from '@/types'
 import { Badge, Button, Card } from '@/components/ui'
@@ -482,7 +482,7 @@ export function WorkWeekCalendar({
                               !d.inMonth && !inWorkweekHighlight && !isToday && 'text-slate-400',
                               d.inMonth && !inWorkweekHighlight && !isToday && 'text-slate-700',
                               hasItems && !isToday && 'font-bold text-slate-900',
-                              isToday && '!bg-blue-600 !text-white font-semibold rounded',
+                              isToday && '!bg-blue-600 !text-white font-semibold rounded dark:!bg-sky-400 dark:!text-slate-950 dark:font-bold dark:ring-1 dark:ring-sky-200',
                             )}
                           >
                             {d.dayNum}
