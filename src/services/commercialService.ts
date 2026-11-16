@@ -288,7 +288,7 @@ export async function saveDeliverableCommercial(input: DeliverableCommercialInpu
     // 3. PO & Delivery Tracking
     if (hasPo) {
       const poPayload: PoInput = {
-        number: input.poNumber.trim() || 'PO-TBD',
+        number: input.poNumber.trim(),
         projectId: input.projectId,
         workstreamId: input.workstreamId,
         supplierId: input.supplierId,

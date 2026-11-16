@@ -1,17 +1,20 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ReferenceLine, ResponsiveContainer, XAxis, YAxis } from 'recharts'
+import { CheckSquare, Cpu, Plus, Square, StickyNote, Trash2 } from 'lucide-react'
 import { useTable } from '@/hooks/useTable'
 import { usePersistedState } from '@/hooks/usePersistedState'
-import type { ActivityLog, Milestone, Project, Supplier, Task, Workstream } from '@/types'
-import { HW_TYPES, PROJECT_STATUSES, isArchivedStatus } from '@/types'
+import type { ActivityLog, Milestone, PetRecord, PoRecord, Project, Quotation, Supplier, Task, Workstream } from '@/types'
+import { HARDWARE_STATUSES, HW_TYPES, PROJECT_STATUSES, isArchivedStatus } from '@/types'
 import { Badge, Card, EmptyState, Loading, Button } from '@/components/ui'
-import { daysFromToday, formatDate, formatDateTime, todayStr } from '@/utils/helpers'
+import { daysFromToday, formatDate, formatDateTime, isPast, newId, todayStr } from '@/utils/helpers'
 import { loadSampleData } from '@/services/sampleData'
 import { WorkWeekCalendar, addDays, getIsoWeek, getMondayOfWeek, parseYmd, toYmd } from '@/features/overview/WorkWeekCalendar'
 import { WorkWeekActionDashboard } from '@/features/overview/WorkWeekActionDashboard'
 import { TaskForm } from '@/features/tasks/TaskForm'
 import { MilestoneForm } from '@/features/tasks/MilestoneForm'
+import { CommercialBadge, buildDeliverableCommercialRows, normalizeHardwareStatus, rowToCommercialInput } from '@/features/commercial/CommercialForms'
+import { emptyDeliverableCommercial, saveDeliverableCommercial } from '@/services/commercialService'
 
 const STATUS_COLORS: Record<string, string> = {
   Planning: '#8b5cf6',
@@ -23,6 +26,14 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 type HwRequiredFilter = 'all' | 'asc' | 'desc' | 'overdue' | '30d' | '60d'
+type RadarFilter = 'all' | 'need_po' | 'in_transit' | 'delivered'
+
+interface QuickNoteItem {
+  id: string
+  text: string
+  done: boolean
+  createdAt: string
+}
 
 export function OverviewPage() {
   const navigate = useNavigate()
@@ -31,31 +42,42 @@ export function OverviewPage() {
   const tasks = useTable<Task>('tasks')
   const milestones = useTable<Milestone>('milestones')
   const suppliers = useTable<Supplier>('suppliers')
+  const quotations = useTable<Quotation>('quotations')
+  const pets = useTable<PetRecord>('petRecords')
+  const pos = useTable<PoRecord>('poRecords')
   const logs = useTable<ActivityLog>('activityLogs')
 
   const [taskModalOpen, setTaskModalOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | undefined>()
   const [milestoneModalOpen, setMilestoneModalOpen] = useState(false)
   const [editingMilestone, setEditingMilestone] = useState<Milestone | undefined>()
-  const [showAllLogs, setShowAllLogs] = usePersistedState<boolean>('npi.overview.showAllLogs', false)
 
   // Saved filters for Project Overview ("HW Type" and "HW Required")
   const [overviewHwType, setOverviewHwType] = usePersistedState<string>('npi.overview.hwType', 'ALL')
   const [overviewHwRequired, setOverviewHwRequired] = usePersistedState<HwRequiredFilter>('npi.overview.hwRequired', 'all')
 
-  // 3-week workload data (Past 2 weeks + Current week) for Tasks (NPI Projects vs Non-NPI Work)
+  // Interactive left-slot widget state (Hardware Delivery Radar + Quick Engineering Pinboard)
+  const [leftWidgetTab, setLeftWidgetTab] = usePersistedState<'radar' | 'notes'>('npi.overview.leftWidgetTab', 'radar')
+  const [radarFilter, setRadarFilter] = usePersistedState<RadarFilter>('npi.overview.radarFilter', 'all')
+  const [quickNotes, setQuickNotes] = usePersistedState<QuickNoteItem[]>('npi.overview.quickNotes', [
+    { id: 'sample-note-1', text: 'Verify socket pin pitch drawing before Friday release', done: false, createdAt: todayStr() },
+    { id: 'sample-note-2', text: 'Follow up PCB impedance coupon report with vendor', done: false, createdAt: todayStr() },
+  ])
+  const [newNoteText, setNewNoteText] = useState('')
+
+  // Past 8 weeks + Current week + Next 8 weeks (17 workweeks total) Line Chart data
   const workloadData = useMemo(() => {
     if (!tasks || !projects) return []
     const projMap = new Map(projects.map((p) => [p.id, p]))
     const currentMon = getMondayOfWeek(parseYmd(todayStr()))
 
-    return [-2, -1, 0].map((offset) => {
+    return Array.from({ length: 17 }, (_, idx) => idx - 8).map((offset) => {
       const mon = addDays(currentMon, offset * 7)
       const sun = addDays(mon, 6)
       const monYmd = toYmd(mon)
       const sunYmd = toYmd(sun)
       const ww = getIsoWeek(mon)
-      const shortRange = `${mon.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}–${addDays(mon, 4).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}`
+      const wwLabel = offset === 0 ? `WW${String(ww).padStart(2, '0')}*` : `WW${String(ww).padStart(2, '0')}`
 
       let npiTasks = 0
       let nonNpiTasks = 0
@@ -75,11 +97,10 @@ export function OverviewPage() {
       }
 
       return {
-        week: offset === 0 ? `WW${String(ww).padStart(2, '0')} (Current)` : `WW${String(ww).padStart(2, '0')}`,
-        range: shortRange,
+        week: wwLabel,
+        isCurrent: offset === 0,
         'NPI Project Tasks': npiTasks,
         'Non-NPI Work Tasks': nonNpiTasks,
-        total: npiTasks + nonNpiTasks,
       }
     })
   }, [tasks, projects])
@@ -118,7 +139,38 @@ export function OverviewPage() {
     })
   }, [activeNpiProjects, npiProjects, overviewHwType, overviewHwRequired])
 
-  if (!projects || !workstreams || !tasks || !milestones || !suppliers || !logs) return <Loading />
+  const commercialRows = useMemo(() => {
+    if (!workstreams || !quotations || !pets || !pos || !projects || !suppliers) return []
+    const activeProjectIds = new Set(activeNpiProjects.map((p) => p.id))
+    const activeWs = workstreams.filter((w) => activeProjectIds.has(w.projectId))
+    const from = daysFromToday(-14)
+    const to = daysFromToday(14)
+    // Need PO / Design-Fab-Delivery: all active NPI deliverables, any timeline.
+    // Delivered: only if delivery date is within the past 2 weeks to next 2 weeks (incl. pull-in).
+    return buildDeliverableCommercialRows(activeWs, quotations, pets, pos, projects, suppliers).filter((r) => {
+      if (normalizeHardwareStatus(r.po) !== 'Delivered') return true
+      const date = r.po?.actualDelivery || r.po?.expectedDelivery
+      return !!date && date >= from && date <= to
+    })
+  }, [workstreams, quotations, pets, pos, projects, suppliers, activeNpiProjects])
+
+  const filteredRadarRows = useMemo(() => {
+    return commercialRows.filter((r) => {
+      const hwStatus = normalizeHardwareStatus(r.po)
+      if (radarFilter === 'need_po') {
+        return !r.po?.number
+      }
+      if (radarFilter === 'in_transit') {
+        return hwStatus === 'Design' || hwStatus === 'Fabrication' || hwStatus === 'In Delivery'
+      }
+      if (radarFilter === 'delivered') {
+        return hwStatus === 'Delivered'
+      }
+      return true
+    })
+  }, [commercialRows, radarFilter])
+
+  if (!projects || !workstreams || !tasks || !milestones || !suppliers || !quotations || !pets || !pos || !logs) return <Loading />
 
   if (projects.length === 0) {
     return (
@@ -149,8 +201,18 @@ export function OverviewPage() {
   const npiChartData = npiStatusRows.filter((d) => d.value > 0)
   const nonNpiChartData = nonNpiStatusRows.filter((d) => d.value > 0)
 
-  const sortedLogs = [...logs].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-  const visibleLogs = showAllLogs ? sortedLogs : sortedLogs.slice(0, 10)
+  const currentWeekTick = workloadData.find((d) => d.isCurrent)?.week
+
+  // Past 15 activities only
+  const latest15Logs = [...logs].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 15)
+
+  function addQuickNote(e: React.FormEvent) {
+    e.preventDefault()
+    const text = newNoteText.trim()
+    if (!text) return
+    setQuickNotes((prev) => [{ id: newId(), text, done: false, createdAt: todayStr() }, ...prev])
+    setNewNoteText('')
+  }
 
   return (
     <div className="space-y-4">
@@ -258,36 +320,48 @@ export function OverviewPage() {
         />
       </div>
 
-      {/* Below Workweek Schedule: 2 Side-by-Side Analytics Sections */}
+      {/* Below Workweek Schedule: 2 Side-by-Side Analytics Sections (Non-Hoverable Charts) */}
       <div className="grid xl:grid-cols-2 gap-4 items-stretch">
-        {/* Section 1: 3-Week Task Workload Bar Chart (Past 2 Weeks + Current Week) */}
+        {/* Section 1: Task Workload Line Graph (Past 8 Weeks + Current Week + Next 8 Weeks) */}
         <Card
-          title="3-Week Task Workload (Past 2 Weeks + Current Week)"
-          action={<span className="text-xs text-slate-400">NPI Projects vs Non-NPI Work</span>}
+          title="Task Workload — Past 8 Weeks & Next 8 Weeks"
+          action={<span className="text-xs text-slate-400">NPI Projects vs Non-NPI Work (* = Current WW)</span>}
           className="[&>div]:!p-3"
         >
-          <div className="h-56">
+          <div className="h-56 pointer-events-none select-none">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={workloadData} margin={{ top: 10, right: 16, left: -12, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="week" tick={{ fontSize: 11, fill: '#475569' }} />
+              <LineChart data={workloadData} margin={{ top: 10, right: 16, left: -16, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="week" tick={{ fontSize: 10, fill: '#475569' }} interval={1} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#475569' }} />
-                <Tooltip
-                  formatter={(value, name) => [`${value ?? 0} task(s)`, String(name ?? '')]}
-                  labelFormatter={(label, payload) => {
-                    const row = payload?.[0]?.payload as { range?: string } | undefined
-                    return row?.range ? `${label} · ${row.range}` : String(label)
-                  }}
-                />
+                {currentWeekTick && (
+                  <ReferenceLine x={currentWeekTick} stroke="#94a3b8" strokeDasharray="3 3" />
+                )}
                 <Legend wrapperStyle={{ fontSize: '11px' }} />
-                <Bar dataKey="NPI Project Tasks" fill="#2563eb" radius={[4, 4, 0, 0]} barSize={28} />
-                <Bar dataKey="Non-NPI Work Tasks" fill="#8b5cf6" radius={[4, 4, 0, 0]} barSize={28} />
-              </BarChart>
+                <Line
+                  type="monotone"
+                  dataKey="NPI Project Tasks"
+                  stroke="#2563eb"
+                  strokeWidth={2.5}
+                  dot={{ r: 3, fill: '#2563eb' }}
+                  activeDot={false}
+                  isAnimationActive={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="Non-NPI Work Tasks"
+                  stroke="#8b5cf6"
+                  strokeWidth={2.5}
+                  dot={{ r: 3, fill: '#8b5cf6' }}
+                  activeDot={false}
+                  isAnimationActive={false}
+                />
+              </LineChart>
             </ResponsiveContainer>
           </div>
         </Card>
 
-        {/* Section 2: Project Status Pie-Donut Charts + Status Tables (NPI Projects & Non-NPI Work) */}
+        {/* Section 2: Project Status Pie-Donut Charts + Status Tables (Non-Hoverable Charts) */}
         <Card
           title="Project Status — NPI Projects & Non-NPI Work"
           className="[&>div]:!p-3"
@@ -300,7 +374,7 @@ export function OverviewPage() {
                 <span className="text-[11px] font-medium text-slate-400">Total: {npiProjects.length}</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="h-36 w-32 shrink-0">
+                <div className="h-36 w-32 shrink-0 pointer-events-none select-none">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
@@ -310,12 +384,12 @@ export function OverviewPage() {
                         innerRadius={28}
                         outerRadius={46}
                         paddingAngle={2}
+                        isAnimationActive={false}
                       >
                         {(npiChartData.length ? npiChartData : [{ name: 'None', value: 1 }]).map((d) => (
                           <Cell key={d.name} fill={STATUS_COLORS[d.name] ?? '#e2e8f0'} />
                         ))}
                       </Pie>
-                      <Tooltip />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -348,7 +422,7 @@ export function OverviewPage() {
                 <span className="text-[11px] font-medium text-slate-400">Total: {nonNpiProjects.length}</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="h-36 w-32 shrink-0">
+                <div className="h-36 w-32 shrink-0 pointer-events-none select-none">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
@@ -358,12 +432,12 @@ export function OverviewPage() {
                         innerRadius={28}
                         outerRadius={46}
                         paddingAngle={2}
+                        isAnimationActive={false}
                       >
                         {(nonNpiChartData.length ? nonNpiChartData : [{ name: 'None', value: 1 }]).map((d) => (
                           <Cell key={d.name} fill={STATUS_COLORS[d.name] ?? '#e2e8f0'} />
                         ))}
                       </Pie>
-                      <Tooltip />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -392,31 +466,240 @@ export function OverviewPage() {
         </Card>
       </div>
 
-      <Card
-        title={`Recent Activities (${sortedLogs.length})`}
-        action={
-          sortedLogs.length > 10 ? (
-            <button onClick={() => setShowAllLogs((s) => !s)} className="text-xs text-primary hover:underline">
-              {showAllLogs ? 'Show latest 10' : `Show all (${sortedLogs.length})`}
-            </button>
-          ) : null
-        }
-      >
-        {visibleLogs.length === 0 ? <EmptyState title="No activity yet" /> : (
-          <ul className="divide-y divide-slate-100 max-h-96 overflow-y-auto pr-1">
-            {visibleLogs.map((l) => (
-              <li key={l.id} className="flex items-center justify-between gap-3 py-2 text-sm">
-                <span className="flex items-center gap-2 min-w-0">
-                  <Badge color={l.action === 'Deleted' ? 'red' : l.action === 'Status Changed' ? 'blue' : 'grey'}>{l.action}</Badge>
-                  <Badge color="violet">{l.entity}</Badge>
-                  <span className="truncate">{l.message}</span>
-                </span>
-                <span className="text-xs text-slate-400 shrink-0">{formatDateTime(l.createdAt)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+      {/* Bottom Row: Interactive Hardware Delivery Radar & Pinboard (Left) + Recent Activities Latest 15 (Right) */}
+      <div className="grid xl:grid-cols-2 gap-4 items-stretch">
+        {/* LEFT SLOT: Interactive Hardware Delivery Radar & Quick Engineering Pinboard */}
+        <Card
+          title="Hardware Delivery Radar & Quick Pinboard"
+          className="[&>div]:!p-3"
+          action={
+            <div className="inline-flex items-center rounded border border-slate-200 bg-slate-50 p-0.5 text-[11px]">
+              <button
+                type="button"
+                onClick={() => setLeftWidgetTab('radar')}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded font-medium transition-colors ${
+                  leftWidgetTab === 'radar' ? 'bg-primary text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Cpu className="h-3 w-3" /> HW Delivery Radar ({commercialRows.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setLeftWidgetTab('notes')}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded font-medium transition-colors ${
+                  leftWidgetTab === 'notes' ? 'bg-primary text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <StickyNote className="h-3 w-3" /> Quick Pinboard ({quickNotes.filter((n) => !n.done).length})
+              </button>
+            </div>
+          }
+        >
+          {leftWidgetTab === 'radar' ? (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-1.5">
+                <div className="flex flex-wrap items-center gap-1 text-[11px]">
+                  {(
+                    [
+                      { id: 'all', label: `All (${commercialRows.length})` },
+                      { id: 'need_po', label: `Need PO (${commercialRows.filter((r) => !r.po?.number).length})` },
+                      {
+                        id: 'in_transit',
+                        label: `Design / Fab / Delivery (${
+                          commercialRows.filter((r) => {
+                            const s = normalizeHardwareStatus(r.po)
+                            return s === 'Design' || s === 'Fabrication' || s === 'In Delivery'
+                          }).length
+                        })`,
+                      },
+                      {
+                        id: 'delivered',
+                        label: `Delivered (${commercialRows.filter((r) => normalizeHardwareStatus(r.po) === 'Delivered').length})`,
+                      },
+                    ] as const
+                  ).map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setRadarFilter(f.id)}
+                      className={`rounded-full px-2 py-0.5 font-medium border transition-colors ${
+                        radarFilter === f.id
+                          ? 'border-primary bg-primary-soft text-primary'
+                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+                <span className="text-[10px] text-slate-400">Click status badges to update live</span>
+              </div>
+
+              <div className="overflow-x-auto max-h-60 overflow-y-auto -mx-3">
+                {filteredRadarRows.length === 0 ? (
+                  <p className="py-8 text-center text-xs text-slate-400">No hardware deliverables match this filter.</p>
+                ) : (
+                  <table className="w-full text-xs">
+                    <thead className="text-[11px] text-slate-500 text-left sticky top-0 bg-white border-b border-slate-100 z-10">
+                      <tr className="whitespace-nowrap">
+                        <th className="px-3 py-1.5 font-semibold">HRS.Deliverable</th>
+                        <th className="px-2 py-1.5 font-semibold">Supplier</th>
+                        <th className="px-2 py-1.5 font-semibold">Quote / PO</th>
+                        <th className="px-2 py-1.5 font-semibold">Exp. Delivery</th>
+                        <th className="px-3 py-1.5 font-semibold">HW Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredRadarRows.map((row) => {
+                        const w = row.workstream
+                        const po = row.po
+                        const hwStatus = normalizeHardwareStatus(po)
+                        const late = po && !po.actualDelivery && isPast(po.expectedDelivery) && hwStatus !== 'Delivered'
+                        const delivName = w.category === 'Others' && w.name !== 'Others' ? `Others (${w.name})` : w.name || w.category
+                        return (
+                          <tr key={w.id} className="border-t border-slate-100 hover:bg-slate-50">
+                            <td className="px-3 py-1.5 whitespace-nowrap">
+                              <Link
+                                to={`/projects/${w.projectId}?tab=deliverables`}
+                                className="font-semibold text-primary hover:underline"
+                                title={`Open Deliverables & Commercial tab for ${row.projectCode}.${delivName}`}
+                              >
+                                {row.projectCode}.{delivName}
+                              </Link>
+                            </td>
+                            <td className="px-2 py-1.5 text-slate-600 truncate max-w-[110px]">{row.supplierName}</td>
+                            <td className="px-2 py-1.5 whitespace-nowrap">
+                              {po?.number ? (
+                                <span className="rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-900">
+                                  PO: {po.number}
+                                </span>
+                              ) : row.quotation?.number ? (
+                                <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-900">
+                                  Q: {row.quotation.number}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-amber-600 font-medium">Pending Quote/PO</span>
+                              )}
+                            </td>
+                            <td className={`px-2 py-1.5 whitespace-nowrap ${late ? 'text-red-600 font-semibold' : 'text-slate-500'}`}>
+                              {formatDate(po?.expectedDelivery || '')}
+                            </td>
+                            <td className="px-3 py-1.5 whitespace-nowrap">
+                              <div className="relative inline-flex items-center cursor-pointer" title="Click to update Hardware Status for this deliverable">
+                                <CommercialBadge status={hwStatus} />
+                                <select
+                                  aria-label={`Update Hardware Status for ${row.projectCode}.${delivName}`}
+                                  value={HARDWARE_STATUSES.includes(hwStatus as (typeof HARDWARE_STATUSES)[number]) ? hwStatus : 'Not Started'}
+                                  onChange={async (e) => {
+                                    const nextHw = e.target.value
+                                    const base = rowToCommercialInput(row)
+                                    await saveDeliverableCommercial(
+                                      {
+                                        ...emptyDeliverableCommercial(w.projectId, w.id, w.supplierId),
+                                        ...base,
+                                        deliveryStatus: nextHw,
+                                      },
+                                      true,
+                                    )
+                                  }}
+                                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                >
+                                  {HARDWARE_STATUSES.map((s) => (
+                                    <option key={s} value={s}>{s}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              <div className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[10px] leading-relaxed text-slate-500">
+                <b className="text-slate-600">Remarks:</b> Need PO and Design / Fab / Delivery show all active NPI; Delivered shows past 2 weeks to next 2 weeks only.
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              <form onSubmit={addQuickNote} className="flex gap-1.5">
+                <input
+                  value={newNoteText}
+                  onChange={(e) => setNewNoteText(e.target.value)}
+                  placeholder="Add a quick engineering reminder or follow-up note…"
+                  className="h-8 flex-1 rounded-md border border-slate-200 bg-white px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+                <Button type="submit" size="sm" variant="primary">
+                  <Plus className="h-3.5 w-3.5" /> Add
+                </Button>
+              </form>
+
+              <ul className="divide-y divide-slate-100 max-h-56 overflow-y-auto pr-1">
+                {quickNotes.length === 0 ? (
+                  <li className="py-8 text-center text-xs text-slate-400">No pinned notes yet. Add a quick reminder above.</li>
+                ) : (
+                  quickNotes.map((note) => (
+                    <li key={note.id} className="flex items-center justify-between gap-2 py-2 text-xs">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setQuickNotes((prev) =>
+                            prev.map((n) => (n.id === note.id ? { ...n, done: !n.done } : n)),
+                          )
+                        }
+                        className="flex items-center gap-2 min-w-0 text-left flex-1 hover:text-primary"
+                      >
+                        {note.done ? (
+                          <CheckSquare className="h-4 w-4 text-emerald-600 shrink-0" />
+                        ) : (
+                          <Square className="h-4 w-4 text-slate-400 shrink-0" />
+                        )}
+                        <span className={note.done ? 'line-through text-slate-400 truncate' : 'text-slate-700 font-medium truncate'}>
+                          {note.text}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setQuickNotes((prev) => prev.filter((n) => n.id !== note.id))}
+                        className="p-1 text-slate-400 hover:text-red-500 rounded"
+                        title="Delete note"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </div>
+          )}
+        </Card>
+
+        {/* RIGHT SLOT: Recent Activities (Past 15 Activities Only) */}
+        <Card
+          title={`Recent Activities (Latest ${latest15Logs.length})`}
+          action={<span className="text-xs text-slate-400">Past 15 activities</span>}
+          className="[&>div]:!p-3"
+        >
+          {latest15Logs.length === 0 ? (
+            <EmptyState title="No activity yet" />
+          ) : (
+            <ul className="divide-y divide-slate-100 max-h-72 overflow-y-auto pr-1">
+              {latest15Logs.map((l) => (
+                <li key={l.id} className="flex items-center justify-between gap-3 py-1.5 text-xs">
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <Badge color={l.action === 'Deleted' ? 'red' : l.action === 'Status Changed' ? 'blue' : 'grey'}>{l.action}</Badge>
+                    <Badge color="violet">{l.entity}</Badge>
+                    <span className="truncate text-slate-700">{l.message}</span>
+                  </span>
+                  <span className="text-[11px] text-slate-400 shrink-0">{formatDateTime(l.createdAt)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </div>
 
       <TaskForm open={taskModalOpen} task={editingTask} onClose={() => { setTaskModalOpen(false); setEditingTask(undefined) }} />
       <MilestoneForm open={milestoneModalOpen} milestone={editingMilestone} onClose={() => { setMilestoneModalOpen(false); setEditingMilestone(undefined) }} />

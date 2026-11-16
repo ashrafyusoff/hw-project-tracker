@@ -20,7 +20,6 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
         {!collapsed && (
           <div className="min-w-0">
             <span className="block font-semibold text-slate-900 truncate leading-tight">HW Project Tracker</span>
-            <span className="block text-[10px] font-medium text-slate-400">by Pacca1214</span>
           </div>
         )}
       </div>

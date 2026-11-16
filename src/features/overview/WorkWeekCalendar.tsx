@@ -549,8 +549,8 @@ export function WorkWeekCalendar({
                   const dayTasks = bucket?.tasks ?? []
                   const dayMilestones = bucket?.milestones ?? []
                   const totalDayItems = dayMilestones.length + dayTasks.length
-                  const isTwoColMatrix = totalDayItems > 3
-                  const isScrollableDay = totalDayItems > 6
+                  const isTwoColMatrix = totalDayItems > 4
+                  const isScrollableDay = totalDayItems > 8
                   const isOver = dragOverCell === day.ymd
                   const isSelectedDay = selectedDay === day.ymd
                   return (
@@ -588,11 +588,11 @@ export function WorkWeekCalendar({
                         </div>
                       </div>
 
-                      {/* Items container: >3 items splits into a 2x3 matrix; >6 items caps height at 3 rows and scrolls */}
+                      {/* Items container: >4 items splits into a 2x4 matrix; >8 items caps height at 4 rows and scrolls */}
                       <div
                         className={cn(
                           isTwoColMatrix ? 'grid grid-cols-2 gap-1.5 auto-rows-min' : 'flex flex-col gap-1.5',
-                          isScrollableDay && 'max-h-[168px] overflow-y-auto pr-0.5',
+                          isScrollableDay && 'max-h-[224px] overflow-y-auto pr-0.5',
                         )}
                       >
                         {/* Milestones on this day */}

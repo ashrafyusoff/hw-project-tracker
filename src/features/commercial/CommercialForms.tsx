@@ -59,13 +59,19 @@ export function buildDeliverableCommercialRows(
 
   const rows: DeliverableCommercialRow[] = workstreams.map((ws) => {
     const p = projMap.get(ws.projectId)
-    const q = quotations.find((r) => !usedQ.has(r.id) && (r.workstreamId === ws.id || (!r.workstreamId && r.projectId === ws.projectId && r.supplierId === ws.supplierId)))
+    const q =
+      quotations.find((r) => !usedQ.has(r.id) && r.workstreamId === ws.id) ??
+      quotations.find((r) => !usedQ.has(r.id) && !r.workstreamId && r.projectId === ws.projectId && r.supplierId === ws.supplierId)
     if (q) usedQ.add(q.id)
 
-    const pet = pets.find((r) => !usedPet.has(r.id) && (r.workstreamId === ws.id || (!r.workstreamId && r.projectId === ws.projectId && r.supplierId === ws.supplierId)))
+    const pet =
+      pets.find((r) => !usedPet.has(r.id) && r.workstreamId === ws.id) ??
+      pets.find((r) => !usedPet.has(r.id) && !r.workstreamId && r.projectId === ws.projectId && r.supplierId === ws.supplierId)
     if (pet) usedPet.add(pet.id)
 
-    const po = pos.find((r) => !usedPo.has(r.id) && (r.workstreamId === ws.id || (!r.workstreamId && r.projectId === ws.projectId && r.supplierId === ws.supplierId)))
+    const po =
+      pos.find((r) => !usedPo.has(r.id) && r.workstreamId === ws.id) ??
+      pos.find((r) => !usedPo.has(r.id) && !r.workstreamId && r.projectId === ws.projectId && r.supplierId === ws.supplierId)
     if (po) usedPo.add(po.id)
 
     const supplierId = ws.supplierId || q?.supplierId || pet?.supplierId || po?.supplierId || ''

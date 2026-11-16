@@ -1,5 +1,5 @@
-import { useMemo, useState, type ReactNode } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Archive, ArrowLeft, Calendar, Cpu, FileSpreadsheet, GitBranch, Layers, Pencil, Plus, Server, Trash2, TrendingUp, X } from 'lucide-react'
 import { db } from '@/database/db'
@@ -64,8 +64,17 @@ function deliverableDisplayName(w: Workstream) {
 export function ProjectDetailPage() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const data = useProjectData(id)
-  const [tab, setTab] = useState<Tab>('Overview')
+  const [tab, setTab] = useState<Tab>(() =>
+    searchParams.get('tab') === 'deliverables' ? 'Deliverables & Commercial' : 'Overview',
+  )
+
+  useEffect(() => {
+    if (searchParams.get('tab') === 'deliverables') {
+      setTab('Deliverables & Commercial')
+    }
+  }, [searchParams])
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [wsOpen, setWsOpen] = useState(false)
