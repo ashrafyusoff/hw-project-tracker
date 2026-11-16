@@ -12,6 +12,9 @@ function validate(i: TaskInput) {
   if (!i.projectId) throw new ValidationError('Please choose a project.')
   checkDateOrder(i.startDate, i.dueDate, 'start date', 'due date')
   checkDateOrder(i.startDate, i.completionDate, 'start date', 'completion date')
+  if (i.startTime && i.endTime && i.endTime <= i.startTime) {
+    throw new ValidationError('End time must be after start time.')
+  }
 }
 
 // A completed task gets 100% and a completion date automatically.
@@ -62,20 +65,25 @@ export async function deleteTask(id: string) {
   })
 }
 
-export async function rescheduleTask(id: string, newDueDate: string) {
+export async function rescheduleTask(id: string, newDueDate: string, newStartTime?: string, newEndTime?: string) {
   const old = await db.tasks.get(id)
   if (!old) throw new ValidationError('Task no longer exists.')
-  if (old.dueDate === newDueDate) return
+  const timeChanged = (newStartTime !== undefined && newStartTime !== old.startTime) || (newEndTime !== undefined && newEndTime !== old.endTime)
+  if (old.dueDate === newDueDate && !timeChanged) return
   let startDate = old.startDate
-  if (old.startDate && old.dueDate) {
+  if (old.startDate && old.dueDate && old.dueDate !== newDueDate) {
     const delta = new Date(newDueDate).getTime() - new Date(old.dueDate).getTime()
     startDate = new Date(new Date(old.startDate).getTime() + delta).toISOString().slice(0, 10)
   } else if (old.startDate && newDueDate < old.startDate) {
     startDate = newDueDate
   }
+  const patch: Partial<Task> = { dueDate: newDueDate, startDate, updatedAt: nowIso() }
+  if (newStartTime !== undefined) patch.startTime = newStartTime
+  if (newEndTime !== undefined) patch.endTime = newEndTime
   await db.transaction('rw', [db.tasks, db.activityLogs], async () => {
-    await db.tasks.update(id, { dueDate: newDueDate, startDate, updatedAt: nowIso() })
-    await logActivity('Task', id, old.projectId, 'Updated', `Task "${old.name}" rescheduled to ${newDueDate}`)
+    await db.tasks.update(id, patch)
+    const timeSuffix = newStartTime && newEndTime ? ` (${newStartTime}–${newEndTime})` : ''
+    await logActivity('Task', id, old.projectId, 'Updated', `Task "${old.name}" rescheduled to ${newDueDate}${timeSuffix}`)
   })
 }
 
@@ -111,6 +119,7 @@ export async function duplicateTaskToDate(id: string, newDueDate: string) {
 }
 
 export const emptyTask = (projectId = ''): TaskInput => ({
-  projectId, workstreamId: '', name: '', assignee: '', supplierId: '', startDate: todayStr(), dueDate: '', completionDate: '',
+  projectId, workstreamId: '', name: '', assignee: '', supplierId: '', startDate: todayStr(), dueDate: '',
+  startTime: '09:00', endTime: '10:00', completionDate: '',
   priority: 'Medium', status: 'Not Started', progress: 0, remarks: '',
 })

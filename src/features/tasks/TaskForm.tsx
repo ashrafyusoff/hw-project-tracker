@@ -156,6 +156,12 @@ function Body({
         <Field label="Due Date">
           <Input type="date" value={form.dueDate} onChange={(e) => set('dueDate', e.target.value)} />
         </Field>
+        <Field label="Start Time">
+          <Input type="time" value={form.startTime ?? '09:00'} onChange={(e) => set('startTime', e.target.value)} />
+        </Field>
+        <Field label="End Time">
+          <Input type="time" value={form.endTime ?? '10:00'} onChange={(e) => set('endTime', e.target.value)} />
+        </Field>
         <Field label="Completion Date">
           <Input type="date" value={form.completionDate} onChange={(e) => set('completionDate', e.target.value)} />
         </Field>

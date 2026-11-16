@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CheckSquare, ChevronLeft, ChevronRight, ClipboardPaste, Copy, Flag, GripVertical, Scissors, X } from 'lucide-react'
+import { CalendarDays, CheckSquare, ChevronLeft, ChevronRight, ClipboardPaste, Clock, Copy, Flag, GripVertical, Scissors, X } from 'lucide-react'
 import type { Milestone, Project, Task } from '@/types'
 import { Badge, Button, Card } from '@/components/ui'
 import { usePersistedState } from '@/hooks/usePersistedState'
 import { duplicateTaskToDate, rescheduleTask } from '@/services/taskService'
 import { duplicateMilestoneToDate, rescheduleMilestone } from '@/services/milestoneService'
 import { cn, todayStr } from '@/utils/helpers'
+import { OutlookWeekHourlyView } from './OutlookWeekHourlyView'
 
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'] as const
 const MINI_DAYS = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'] as const
@@ -164,6 +165,8 @@ export function WorkWeekCalendar({
     setInternalMonday(next)
     onBaseMondayChange?.(next)
   }
+  // View mode: 'multi' (1-10 weeks grid) or 'week' (Outlook-style 1-week Mon-Fri hourly view)
+  const [viewMode, setViewMode] = usePersistedState<'multi' | 'week'>('npi.calendar.viewMode', 'multi')
   // Customizable number of weeks (1..10, default 4) — saved in localStorage
   const [weeksToShow, setWeeksToShow] = usePersistedState<number>('npi.calendar.weeksToShow', 4)
   const [filterProject, setFilterProject] = usePersistedState<string>('npi.calendar.filterProject', '')
@@ -187,12 +190,17 @@ export function WorkWeekCalendar({
     })
   }
 
+  // Navigate by 1 week (used in Weekly Hours view)
+  function shiftWeek(deltaWeeks: number) {
+    setBaseMonday((prev) => addDays(prev, deltaWeeks * 7))
+  }
+
   function goToCurrentWeek() {
     setBaseMonday(getMondayOfWeek(parseYmd(today)))
   }
 
   const weeks = useMemo(() => {
-    const count = Math.max(1, Math.min(10, weeksToShow))
+    const count = viewMode === 'week' ? 1 : Math.max(1, Math.min(10, weeksToShow))
     return Array.from({ length: count }, (_, wIdx) => {
       const monday = addDays(baseMonday, wIdx * 7)
       const ww = getIsoWeek(monday)
@@ -215,7 +223,7 @@ export function WorkWeekCalendar({
         days,
       }
     })
-  }, [baseMonday, weeksToShow, today])
+  }, [baseMonday, weeksToShow, viewMode, today])
 
   // Set of Mondays currently displayed in the workweek schedule (for highlighting in the mini calendar)
   const displayedMondays = useMemo(() => new Set(weeks.map((w) => w.mondayYmd)), [weeks])
@@ -343,6 +351,28 @@ export function WorkWeekCalendar({
     }
   }
 
+  async function handleDropTaskAtTime(taskId: string, targetYmd: string, startTime: string, endTime: string, ww: number) {
+    setDragOverCell('')
+    setDraggingId('')
+    try {
+      await rescheduleTask(taskId, targetYmd, startTime, endTime)
+      showToast(`Task moved to WW${String(ww).padStart(2, '0')} (${targetYmd} ${startTime}–${endTime})`)
+    } catch {
+      // ignore if deleted
+    }
+  }
+
+  async function handleDropMilestone(milestoneId: string, targetYmd: string, ww: number) {
+    setDragOverCell('')
+    setDraggingId('')
+    try {
+      await rescheduleMilestone(milestoneId, targetYmd)
+      showToast(`Milestone moved to WW${String(ww).padStart(2, '0')} (${targetYmd})`)
+    } catch {
+      // ignore if deleted
+    }
+  }
+
   const rangeLabel = `${weeks[0].mondayLabel} – ${weeks[weeks.length - 1].fridayLabel} ${weeks[weeks.length - 1].year}`
 
   return (
@@ -369,23 +399,61 @@ export function WorkWeekCalendar({
             ))}
           </select>
 
-          <label className="inline-flex items-center gap-1.5 text-xs text-slate-700 bg-slate-100 border border-slate-200 rounded-md px-2 h-8">
-            <span className="font-medium">Weeks:</span>
-            <input
-              type="number"
-              min={1}
-              max={10}
-              value={weeksToShow}
-              onChange={(e) => setWeeksToShow(Math.max(1, Math.min(10, Number(e.target.value) || 4)))}
-              className="w-11 bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs font-semibold text-slate-800 text-center focus:outline-none focus:ring-1 focus:ring-primary"
-            />
-            <span className="text-[11px] text-slate-500">(max 10)</span>
-          </label>
+          {/* View mode switcher: Multi-Week vs Outlook-style 1-Week Hourly */}
+          <div className="inline-flex rounded-md border border-slate-200 bg-slate-100 p-0.5" role="group" aria-label="Calendar view mode">
+            <button
+              type="button"
+              onClick={() => setViewMode('multi')}
+              className={cn(
+                'inline-flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium transition-colors',
+                viewMode === 'multi' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900',
+              )}
+            >
+              <CalendarDays className="h-3.5 w-3.5" /> Multi-Week
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('week')}
+              className={cn(
+                'inline-flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium transition-colors',
+                viewMode === 'week' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900',
+              )}
+            >
+              <Clock className="h-3.5 w-3.5" /> Weekly (Hours)
+            </button>
+          </div>
+
+          {viewMode === 'multi' && (
+            <label className="inline-flex items-center gap-1.5 text-xs text-slate-700 bg-slate-100 border border-slate-200 rounded-md px-2 h-8">
+              <span className="font-medium">Weeks:</span>
+              <input
+                type="number"
+                min={1}
+                max={10}
+                value={weeksToShow}
+                onChange={(e) => setWeeksToShow(Math.max(1, Math.min(10, Number(e.target.value) || 4)))}
+                className="w-11 bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs font-semibold text-slate-800 text-center focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <span className="text-[11px] text-slate-500">(max 10)</span>
+            </label>
+          )}
 
           <div className="flex items-center gap-1">
-            <Button size="sm" onClick={() => shiftMonth(-1)} title="Previous month"><ChevronLeft className="h-3.5 w-3.5" /> Prev Month</Button>
+            <Button
+              size="sm"
+              onClick={() => (viewMode === 'week' ? shiftWeek(-1) : shiftMonth(-1))}
+              title={viewMode === 'week' ? 'Previous week' : 'Previous month'}
+            >
+              <ChevronLeft className="h-3.5 w-3.5" /> {viewMode === 'week' ? 'Prev Week' : 'Prev Month'}
+            </Button>
             <Button size="sm" onClick={goToCurrentWeek}>Current Week</Button>
-            <Button size="sm" onClick={() => shiftMonth(1)} title="Next month">Next Month <ChevronRight className="h-3.5 w-3.5" /></Button>
+            <Button
+              size="sm"
+              onClick={() => (viewMode === 'week' ? shiftWeek(1) : shiftMonth(1))}
+              title={viewMode === 'week' ? 'Next week' : 'Next month'}
+            >
+              {viewMode === 'week' ? 'Next Week' : 'Next Month'} <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
           </div>
           <span className="text-xs text-slate-600 font-semibold min-w-[135px] text-right">{rangeLabel}</span>
         </div>
@@ -500,7 +568,32 @@ export function WorkWeekCalendar({
           </p>
         </aside>
 
-        {/* RIGHT: 5-Day Workweek Schedule */}
+        {/* RIGHT: 5-Day Workweek Schedule (Multi-Week Grid OR Outlook 1-Week Hourly View) */}
+        {viewMode === 'week' ? (
+          <OutlookWeekHourlyView
+            week={weeks[0]}
+            itemsByDay={itemsByDay}
+            today={today}
+            projectCode={projectCode}
+            selectedItem={selectedItem}
+            selectedDay={selectedDay}
+            draggingId={draggingId}
+            clipboard={clipboard}
+            onSelectDay={setSelectedDay}
+            onSelectItem={setSelectedItem}
+            onEditTask={onEditTask}
+            onEditMilestone={onEditMilestone}
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
+            onCopy={handleCopy}
+            onCut={handleCut}
+            onPaste={handlePaste}
+            onDropTaskAtTime={handleDropTaskAtTime}
+            onDropMilestone={handleDropMilestone}
+            taskCardStyle={taskCardStyle}
+            milestoneCardStyle={milestoneCardStyle}
+          />
+        ) : (
         <div className="flex-1 overflow-x-auto">
           <div className="min-w-[820px]">
             {/* 5-day Workweek Header */}
@@ -676,6 +769,7 @@ export function WorkWeekCalendar({
             ))}
           </div>
         </div>
+        )}
       </div>
     </Card>
   )
