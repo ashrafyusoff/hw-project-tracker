@@ -3,8 +3,6 @@ import { useTable } from '@/hooks/useTable'
 import {
   HARDWARE_CATEGORIES,
   HARDWARE_STATUSES,
-  PROGRESS_STEPS,
-  WORKSTREAM_STATUSES,
   type PetRecord,
   type PoRecord,
   type Quotation,
@@ -16,7 +14,6 @@ import { emptyDeliverableCommercial, saveDeliverableCommercial, type Deliverable
 import { errorMessage } from '@/utils/validation'
 import { Button, Field, FormError, Input, Loading, Modal, Select, Textarea } from '@/components/ui'
 
-const PROGRESS_OPTIONS = PROGRESS_STEPS.map((p) => ({ value: String(p), label: `${p}%` }))
 const CURRENCIES = ['USD', 'MYR', 'SGD', 'JPY', 'EUR', 'CNY'] as const
 
 export function WorkstreamForm({
@@ -155,7 +152,6 @@ function Body({
   const set = <K extends keyof WorkstreamInput>(k: K, v: WorkstreamInput[K]) => setForm((f) => ({ ...f, [k]: v }))
   const setC = <K extends keyof DeliverableCommercialInput>(k: K, v: DeliverableCommercialInput[K]) => setComm((c) => ({ ...c, [k]: v }))
 
-  const roundedProgress = String(Math.round((form.progress || 0) / 10) * 10)
   const isOthers = form.category === 'Others'
 
   async function submit(e: React.FormEvent) {
@@ -253,12 +249,12 @@ function Body({
             />
           </Field>
 
-          <Field label="Status">
-            <Select options={WORKSTREAM_STATUSES} value={form.status} onChange={(e) => set('status', e.target.value as WorkstreamInput['status'])} />
-          </Field>
-
-          <Field label="Progress (%)">
-            <Select options={PROGRESS_OPTIONS} value={roundedProgress} onChange={(e) => set('progress', Number(e.target.value))} />
+          <Field label="Hardware Status">
+            <Select
+              options={HARDWARE_STATUSES}
+              value={HARDWARE_STATUSES.includes(comm.deliveryStatus as (typeof HARDWARE_STATUSES)[number]) ? comm.deliveryStatus : 'Not Started'}
+              onChange={(e) => setC('deliveryStatus', e.target.value)}
+            />
           </Field>
         </div>
       </div>
@@ -303,13 +299,6 @@ function Body({
           </Field>
           <Field label="Actual Delivery">
             <Input type="date" value={comm.actualDelivery} onChange={(e) => setC('actualDelivery', e.target.value)} />
-          </Field>
-          <Field label="Hardware Status">
-            <Select
-              options={HARDWARE_STATUSES}
-              value={HARDWARE_STATUSES.includes(comm.deliveryStatus as (typeof HARDWARE_STATUSES)[number]) ? comm.deliveryStatus : 'Not Started'}
-              onChange={(e) => setC('deliveryStatus', e.target.value)}
-            />
           </Field>
         </div>
       </div>

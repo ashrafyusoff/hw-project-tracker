@@ -60,7 +60,7 @@ export function ProjectGanttChart({
       progress: p.progress,
       status: p.status,
       isLate: p.status !== 'Completed' && !!p.baselineDate && isPast(p.baselineDate),
-      tooltip: `HRS ${p.code}\nStart: ${formatDate(projStart)} → HW Required: ${formatDate(p.baselineDate)}\nStatus: ${p.status} (${p.progress}%)`,
+      tooltip: `HRS ${p.code}\nStart: ${formatDate(projStart)} → HW Required: ${formatDate(p.baselineDate)}\nStatus: ${p.status}`,
     })
 
     // 2. Deliverables & Commercial / Hardware Delivery Bars
@@ -94,7 +94,7 @@ export function ProjectGanttChart({
         status: w.status,
         hwStatus,
         isLate: !!late || w.status === 'Delayed',
-        tooltip: `${deliverableName(w)}${w.mpn ? ` (${w.mpn})` : ''}\nSupplier: ${comm?.supplierName ?? '—'}\nStart/PO: ${formatDate(dStart)} → Delivery: ${formatDate(dEnd)}\nDeliverable Status: ${w.status} (${w.progress}%)\nHardware Status: ${hwStatus}`,
+        tooltip: `${deliverableName(w)}${w.mpn ? ` (${w.mpn})` : ''}\nSupplier: ${comm?.supplierName ?? '—'}\nStart/PO: ${formatDate(dStart)} → Delivery: ${formatDate(dEnd)}\nHardware Status: ${hwStatus}`,
       })
     }
 
@@ -136,7 +136,7 @@ export function ProjectGanttChart({
         progress: t.progress,
         status: t.status,
         isLate: late,
-        tooltip: `Task: ${t.name}\n${formatDate(t.startDate)} → ${formatDate(t.dueDate)}\nStatus: ${t.status} (${t.progress}%)`,
+        tooltip: `Task: ${t.name}\n${formatDate(t.startDate)} → ${formatDate(t.dueDate)}\nStatus: ${t.status}`,
       })
     }
 
@@ -191,7 +191,7 @@ export function ProjectGanttChart({
           <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" /> Completed / Delivered</span>
           <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-red-500" /> Delayed / Overdue</span>
         </div>
-        <span className="text-[11px] text-slate-400">Red vertical line = Today ({formatDate(todayStr())}) · Darker bar fill = Progress %</span>
+        <span className="text-[11px] text-slate-400">Red vertical line = Today ({formatDate(todayStr())})</span>
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
@@ -199,7 +199,7 @@ export function ProjectGanttChart({
           {/* Header Row */}
           <div className="flex border-b border-slate-200 bg-slate-100 text-xs font-semibold text-slate-700">
             <div className="w-72 shrink-0 px-3 py-2.5 border-r border-slate-200">NPI / HRS Item</div>
-            <div className="w-40 shrink-0 px-3 py-2.5 border-r border-slate-200">Status / Progress</div>
+            <div className="w-40 shrink-0 px-3 py-2.5 border-r border-slate-200">Status</div>
             <div className="relative flex-1 h-9">
               {ticks.map((t, idx) => (
                 <span
@@ -244,7 +244,6 @@ export function ProjectGanttChart({
                 {/* Status / Progress column */}
                 <div className="w-40 shrink-0 px-3 py-2 border-r border-slate-200 flex items-center justify-between gap-1">
                   {item.hwStatus ? <CommercialBadge status={item.hwStatus} /> : <Badge>{item.status}</Badge>}
-                  {!item.isPoint && <span className="text-[11px] font-semibold text-slate-600">{item.progress}%</span>}
                 </div>
 
                 {/* Timeline Bar Area */}
@@ -276,10 +275,6 @@ export function ProjectGanttChart({
                       style={{ left: `${left}%`, width: `${width}%` }}
                       title={item.tooltip}
                     >
-                      <div
-                        className="h-full bg-black/25 transition-all"
-                        style={{ width: `${Math.max(0, Math.min(100, item.progress))}%` }}
-                      />
                     </div>
                   )}
                 </div>
@@ -291,3 +286,4 @@ export function ProjectGanttChart({
     </div>
   )
 }
+

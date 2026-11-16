@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Archive, ArrowLeft, Calendar, Cpu, FileSpreadsheet, GitBranch, Layers, Pencil, Plus, Server, Trash2, TrendingUp, X } from 'lucide-react'
+import { Archive, ArrowLeft, Calendar, Cpu, FileSpreadsheet, GitBranch, Layers, Pencil, Plus, Server, Trash2, X } from 'lucide-react'
 import { db } from '@/database/db'
-import { WORKSTREAM_STATUSES, isArchivedStatus, type Milestone, type Supplier, type Task, type Workstream, type WorkstreamStatus } from '@/types'
-import { Badge, Button, Card, ConfirmDialog, EmptyState, Loading, ProgressBar, Select } from '@/components/ui'
+import { isArchivedStatus, type Milestone, type Supplier, type Task, type Workstream } from '@/types'
+import { Badge, Button, Card, ConfirmDialog, EmptyState, Loading, Select } from '@/components/ui'
 import { ProjectForm } from '@/features/projects/ProjectForm'
 import { WorkstreamForm } from '@/features/projects/WorkstreamForm'
 import { ProjectGanttChart } from '@/features/projects/ProjectGanttChart'
@@ -13,7 +13,7 @@ import { MilestoneForm } from '@/features/tasks/MilestoneForm'
 import { TaskTable } from '@/features/tasks/TaskTable'
 import { MilestoneTable } from '@/features/tasks/MilestoneTable'
 import { CommercialBadge, buildDeliverableCommercialRows, normalizeHardwareStatus } from '@/features/commercial/CommercialForms'
-import { InlineCommercialCell, InlineProgressSelect, InlineStatusSelect } from './ProjectsPage'
+import { InlineCommercialCell } from './ProjectsPage'
 import { exportSingleProjectReport } from '@/services/exportService'
 import { deleteTask } from '@/services/taskService'
 import { deleteMilestone } from '@/services/milestoneService'
@@ -163,7 +163,7 @@ export function ProjectDetailPage() {
           <section className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
             <div className="h-1 w-full bg-gradient-to-r from-blue-600 via-indigo-500 to-cyan-500" />
             <div className="p-3 space-y-2.5">
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
                 {/* 1. HRS & HW Type */}
                 <div className="rounded-md border border-slate-100 bg-slate-50/70 px-2.5 py-2">
                   <div className="flex items-center justify-between text-[11px] font-medium text-slate-400">
@@ -223,15 +223,6 @@ export function ProjectDetailPage() {
                     <span>{milestones.length} MS</span>
                   </div>
                 </div>
-
-                {/* 6. Overall Progress */}
-                <div className="rounded-md border border-slate-100 bg-slate-50/70 px-2.5 py-2">
-                  <div className="flex items-center justify-between text-[11px] font-medium text-slate-400 mb-1">
-                    <span>Overall Progress</span>
-                    <TrendingUp className="h-3.5 w-3.5 text-blue-600 shrink-0" />
-                  </div>
-                  <ProgressBar value={p.progress} />
-                </div>
               </div>
 
               {/* Compact single-line description & deadline indicator */}
@@ -279,7 +270,7 @@ export function ProjectDetailPage() {
           {workstreams.length === 0 ? (
             <EmptyState title="No deliverables yet" hint="Add PCB, Socket, Handler Kit, Stiffener, Probe Card, Probe Head, or Others deliverables for this project." />
           ) : (
-            <Table head={['Deliverable Branch', 'MPN', 'Supplier', 'Status', 'Progress', 'Delivery Dates', 'Commercial & Hardware Status (Quote · PET · PO)', 'Remarks', ...(archived ? [] : ['Actions'])]}>
+            <Table head={['Deliverable Branch', 'MPN', 'Supplier', 'Delivery Dates', 'Hardware Status (Quote · PET · PO)', 'Remarks', ...(archived ? [] : ['Actions'])]}>
               {workstreams.map((w, idx) => {
                 const isLast = idx === workstreams.length - 1
                 const comm = commercialRows.find((r) => r.workstream.id === w.id)
@@ -299,31 +290,6 @@ export function ProjectDetailPage() {
                     </td>
                     <td className="font-mono text-xs text-slate-600 whitespace-nowrap">{w.mpn || '—'}</td>
                     <td>{supName(w.supplierId)}</td>
-                    <td>
-                      {archived ? (
-                        <Badge>{w.status}</Badge>
-                      ) : (
-                        <InlineStatusSelect
-                          value={w.status}
-                          options={WORKSTREAM_STATUSES}
-                          onChange={async (next) => {
-                            try { await updateWorkstream(w.id, { ...w, status: next as WorkstreamStatus }) } catch (e) { setError(errorMessage(e)) }
-                          }}
-                        />
-                      )}
-                    </td>
-                    <td className="w-32">
-                      {archived ? (
-                        <ProgressBar value={w.progress} />
-                      ) : (
-                        <InlineProgressSelect
-                          value={w.progress}
-                          onChange={async (next) => {
-                            try { await updateWorkstream(w.id, { ...w, progress: next }) } catch (e) { setError(errorMessage(e)) }
-                          }}
-                        />
-                      )}
-                    </td>
                     <td className="whitespace-nowrap text-xs">
                       {po && (po.expectedDelivery || po.actualDelivery) ? (
                         <div className={late ? 'text-red-600 font-semibold' : 'text-slate-600'}>

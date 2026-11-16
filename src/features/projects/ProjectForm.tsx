@@ -1,11 +1,10 @@
 import { useState } from 'react'
-import { HW_TYPES, PROJECT_STATUSES, PROGRESS_STEPS, isArchivedStatus, type Project } from '@/types'
+import { HW_TYPES, PROJECT_STATUSES, isArchivedStatus, type Project } from '@/types'
 import { emptyProject, createProject, updateProject, type ProjectInput } from '@/services/projectService'
 import { todayStr } from '@/utils/helpers'
 import { errorMessage } from '@/utils/validation'
 import { Button, ConfirmDialog, Field, FormError, Input, Modal, Select, Textarea } from '@/components/ui'
 
-const PROGRESS_OPTIONS = PROGRESS_STEPS.map((p) => ({ value: String(p), label: `${p}%` }))
 
 // Create / edit project dialog. `project` = editing, undefined = creating.
 export function ProjectForm({ open, project, onClose }: { open: boolean; project?: Project; onClose: () => void }) {
@@ -28,7 +27,6 @@ function ProjectFormBody({ project, onClose }: { project?: Project; onClose: () 
   const [confirmArchive, setConfirmArchive] = useState(false)
   const set = <K extends keyof ProjectInput>(k: K, v: ProjectInput[K]) => setForm((f) => ({ ...f, [k]: v }))
 
-  const roundedProgress = String(Math.round((form.progress || 0) / 10) * 10)
   const willMoveToArchive = isArchivedStatus(form.status) && (!project || !isArchivedStatus(project.status))
 
   async function doSave() {
@@ -78,9 +76,6 @@ function ProjectFormBody({ project, onClose }: { project?: Project; onClose: () 
         </Field>
         <Field label="Status">
           <Select options={PROJECT_STATUSES} value={form.status} onChange={(e) => set('status', e.target.value as ProjectInput['status'])} />
-        </Field>
-        <Field label="Progress (%)">
-          <Select options={PROGRESS_OPTIONS} value={roundedProgress} onChange={(e) => set('progress', Number(e.target.value))} />
         </Field>
         <Field label="Start Date (Creation Date)">
           <Input type="date" value={form.startDate} disabled readOnly className="bg-slate-100 text-slate-500 cursor-not-allowed" />

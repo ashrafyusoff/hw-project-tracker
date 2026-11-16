@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+﻿import { useMemo } from 'react'
 import type { Project, Task } from '@/types'
 import { EmptyState } from '@/components/ui'
 import { formatDate, todayStr } from '@/utils/helpers'
@@ -62,8 +62,7 @@ export function TaskTimeline({ tasks, projects }: { tasks: Task[]; projects: Pro
                     {months.map((m) => <span key={m.label + m.left} className="absolute inset-y-0 border-l border-slate-100" style={{ left: `${m.left}%` }} />)}
                     <span className="absolute inset-y-0 border-l-2 border-red-300 z-10" style={{ left: `${todayLeft}%` }} title="Today" />
                     <div className={`absolute top-2 h-4 rounded ${barColor(t)} opacity-90`} style={{ left: `${left}%`, width: `${width}%` }}
-                      title={`${t.name}\n${formatDate(t.startDate)} → ${formatDate(t.dueDate)}\n${t.status} · ${t.progress}%`}>
-                      <div className="h-full rounded bg-black/20" style={{ width: `${t.progress}%` }} />
+                      title={`${t.name}\n${formatDate(t.startDate)} → ${formatDate(t.dueDate)}\n${t.status}`}>
                     </div>
                   </div>
                 </div>
@@ -71,9 +70,10 @@ export function TaskTimeline({ tasks, projects }: { tasks: Task[]; projects: Pro
             })}
           </div>
         ))}
-        <p className="px-3 py-2 text-xs text-slate-400">Red line = today. Dark part of a bar = progress. Red bar = overdue, green = completed. Hover a bar for dates.</p>
+        <p className="px-3 py-2 text-xs text-slate-400">Red line = today. Red bar = overdue, green = completed. Hover a bar for dates.</p>
         {undated.length > 0 && <p className="px-3 pb-2 text-xs text-slate-400">{undated.length} task(s) have no dates and are not shown.</p>}
       </div>
     </div>
   )
 }
+

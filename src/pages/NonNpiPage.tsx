@@ -7,7 +7,6 @@ import {
   NON_NPI_CATEGORIES,
   NON_NPI_TASK_STATUSES,
   PRIORITIES,
-  PROGRESS_STEPS,
   PROJECT_STATUSES,
   isArchivedStatus,
   type Priority,
@@ -30,7 +29,7 @@ import {
   Select,
   Textarea,
 } from '@/components/ui'
-import { InlineProgressSelect, InlineStatusSelect } from './ProjectsPage'
+import { InlineStatusSelect } from './ProjectsPage'
 import { TaskForm } from '@/features/tasks/TaskForm'
 import { DeadlineBadge, isOverdueTask } from '@/features/tasks/TaskTable'
 import { createProject, deleteProject, emptyProject, updateProject, type ProjectInput } from '@/services/projectService'
@@ -40,7 +39,6 @@ import { formatDate, isPast, todayStr } from '@/utils/helpers'
 import { errorMessage } from '@/utils/validation'
 
 const COLLAPSED_KEY = 'npi.nonNpi.collapsedIds'
-const PROGRESS_OPTIONS = PROGRESS_STEPS.map((p) => ({ value: String(p), label: `${p}%` }))
 const DAY = 86400000
 const toMs = (s: string) => new Date(s).getTime()
 
@@ -193,7 +191,6 @@ export function NonNpiPage() {
                     <th className="px-3 py-2.5 font-semibold whitespace-nowrap w-56 max-w-[220px]">Title / Description</th>
                     <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Priority</th>
                     <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Status</th>
-                    <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Progress</th>
                     <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Start → Target / Due</th>
                     <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Actions</th>
                   </tr>
@@ -384,14 +381,6 @@ function NonNpiWorkGroup({
             }}
           />
         </td>
-        <td className="px-3 w-36">
-          <InlineProgressSelect
-            value={p.progress}
-            onChange={async (next) => {
-              try { await updateProject(p.id, { ...p, progress: next }) } catch (e) { onError(errorMessage(e)) }
-            }}
-          />
-        </td>
         <td className="px-3 whitespace-nowrap text-xs text-slate-600">
           {formatDate(p.startDate)} → <span className="font-medium text-slate-800">{formatDate(p.baselineDate)}</span>
         </td>
@@ -536,8 +525,6 @@ function NonNpiWorkFormBody({
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const set = <K extends keyof ProjectInput>(k: K, v: ProjectInput[K]) => setForm((f) => ({ ...f, [k]: v }))
-
-  const roundedProgress = String(Math.round((form.progress || 0) / 10) * 10)
   const previewCategory = categorySelect === 'Others' ? customCategory.trim() || 'Others' : categorySelect
   const generatedHeader = `${previewCategory} ${runningTag}`
 
@@ -599,9 +586,6 @@ function NonNpiWorkFormBody({
         </Field>
         <Field label="Status">
           <Select options={PROJECT_STATUSES} value={form.status} onChange={(e) => set('status', e.target.value as ProjectStatus)} />
-        </Field>
-        <Field label="Progress (%)">
-          <Select options={PROGRESS_OPTIONS} value={roundedProgress} onChange={(e) => set('progress', Number(e.target.value))} />
         </Field>
         <Field label="Start Date (Creation Date)">
           <Input type="date" value={form.startDate} disabled readOnly className="bg-slate-100 text-slate-500 cursor-not-allowed" />
@@ -719,7 +703,7 @@ function NonNpiGanttChart({ works, tasks }: { works: Project[]; tasks: Task[] })
         <div className="min-w-[860px]">
           <div className="flex border-b border-slate-200 bg-slate-100 text-xs font-semibold text-slate-700">
             <div className="w-72 shrink-0 px-3 py-2 border-r border-slate-200">Category / Task</div>
-            <div className="w-40 shrink-0 px-3 py-2 border-r border-slate-200">Status / Progress</div>
+            <div className="w-40 shrink-0 px-3 py-2 border-r border-slate-200">Status</div>
             <div className="relative flex-1 h-8">
               {ticks.map((t, idx) => (
                 <span
@@ -767,7 +751,6 @@ function NonNpiGanttChart({ works, tasks }: { works: Project[]; tasks: Task[] })
 
                 <div className="w-40 shrink-0 px-3 py-2 border-r border-slate-200 flex items-center justify-between gap-1">
                   <Badge>{item.status}</Badge>
-                  {item.kind === 'work' && <span className="text-[11px] font-semibold text-slate-600">{item.progress}%</span>}
                 </div>
 
                 <div className="relative flex-1 h-10">
@@ -783,12 +766,6 @@ function NonNpiGanttChart({ works, tasks }: { works: Project[]; tasks: Task[] })
                     style={{ left: `${left}%`, width: `${width}%` }}
                     title={`${item.label}\n${item.startDate} → ${item.endDate}\nStatus: ${item.status}`}
                   >
-                    {item.kind === 'work' && (
-                      <div
-                        className="h-full bg-black/25"
-                        style={{ width: `${Math.max(0, Math.min(100, item.progress))}%` }}
-                      />
-                    )}
                   </div>
                 </div>
               </div>
@@ -799,3 +776,4 @@ function NonNpiGanttChart({ works, tasks }: { works: Project[]; tasks: Task[] })
     </div>
   )
 }
+

@@ -7,7 +7,6 @@ import {
   ACTIVE_PROJECT_STATUSES,
   HARDWARE_STATUSES,
   HW_TYPES,
-  PROGRESS_STEPS,
   PROJECT_STATUSES,
   WORKSTREAM_STATUSES,
   isArchivedStatus,
@@ -20,7 +19,7 @@ import {
   type Workstream,
   type WorkstreamStatus,
 } from '@/types'
-import { Badge, Button, Card, ConfirmDialog, EmptyState, Input, Loading, ProgressBar, Select } from '@/components/ui'
+import { Badge, Button, Card, ConfirmDialog, EmptyState, Input, Loading, Select } from '@/components/ui'
 import { ProjectForm } from '@/features/projects/ProjectForm'
 import { WorkstreamForm } from '@/features/projects/WorkstreamForm'
 import {
@@ -36,7 +35,7 @@ import { deleteWorkstream, updateWorkstream } from '@/services/workstreamService
 import { formatDate, isPast } from '@/utils/helpers'
 import { errorMessage } from '@/utils/validation'
 
-type SortKey = 'code' | 'hwType' | 'deviceName' | 'status' | 'progress' | 'target'
+type SortKey = 'code' | 'hwType' | 'deviceName' | 'status' | 'target'
 const COLLAPSED_STORAGE_KEY = 'npi.projects.collapsedIds'
 
 export function ProjectsPage() {
@@ -94,7 +93,6 @@ export function ProjectsPage() {
     const q = search.trim().toLowerCase()
     const val = (p: Project): string | number => {
       switch (sort.key) {
-        case 'progress': return p.progress
         case 'target': return p.baselineDate || '9999'
         case 'status': return PROJECT_STATUSES.indexOf(p.status)
         case 'hwType': return (p.hwType || 'FT').toLowerCase()
@@ -183,10 +181,9 @@ export function ProjectsPage() {
                   <Th k="code">HRS Number / Deliverable</Th>
                   <Th k="hwType">HW Type / MPN</Th>
                   <Th k="deviceName">Device / Supplier</Th>
-                  <Th k="status">Status</Th>
-                  <Th k="progress">Progress</Th>
+                  <Th k="status">Status / HW Status</Th>
                   <Th k="target">HW Required / Delivery</Th>
-                  <Th>Commercial & Hardware Status (Quote · PET · PO)</Th>
+                  <Th>Quote · PET · PO</Th>
                   <Th>Actions</Th>
                 </tr>
               </thead>
@@ -292,48 +289,20 @@ export function InlineStatusSelect({
 }
 
 /**
- * Inline hover/click Progress selector (0% to 100% in 10% increments).
- */
-export function InlineProgressSelect({
-  value,
-  onChange,
-}: {
-  value: number
-  onChange: (next: number) => void
-}) {
-  const rounded = Math.round((value || 0) / 10) * 10
-  return (
-    <div
-      className="relative group/prog cursor-pointer rounded px-1 py-0.5 -mx-1 hover:bg-blue-50/70 hover:ring-1 hover:ring-primary/30 transition-all"
-      onClick={(e) => e.stopPropagation()}
-      title="Click to change progress % directly"
-    >
-      <ProgressBar value={value} />
-      <select
-        aria-label="Change progress"
-        value={String(rounded)}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-      >
-        {PROGRESS_STEPS.map((p) => (
-          <option key={p} value={String(p)}>{p}%</option>
-        ))}
-      </select>
-    </div>
-  )
-}
-
-/**
  * Inline hover/click editor for Deliverable Commercial & Hardware Status (Quote · PET · PO · Hardware Status).
  */
 export function InlineCommercialCell({
   workstream: w,
   comm,
   onError,
+  hwOnly = false,
+  hideHw = false,
 }: {
   workstream: Workstream
   comm?: DeliverableCommercialRow
   onError: (msg: string) => void
+  hwOnly?: boolean
+  hideHw?: boolean
 }) {
   const [editingField, setEditingField] = useState<'quote' | 'pet' | 'po' | null>(null)
   const [draft, setDraft] = useState('')
@@ -376,6 +345,7 @@ export function InlineCommercialCell({
 
   return (
     <div className="flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+      {!hwOnly && (<>
       {/* Quote # inline edit */}
       {editingField === 'quote' ? (
         <span className="inline-flex items-center gap-1 rounded border border-blue-400 bg-white px-1.5 py-0.5 text-[11px]">
@@ -471,8 +441,10 @@ export function InlineCommercialCell({
           <b>PO:</b> {po?.number ? `${po.number}${po.amount ? ` (${po.currency} ${po.amount.toLocaleString()})` : ''}` : '+ Add'}
         </button>
       )}
+      </>)}
 
       {/* Hardware Status inline dropdown */}
+      {!hideHw && (
       <div
         className="relative inline-flex items-center group/hw cursor-pointer rounded hover:ring-2 hover:ring-primary/30 transition-shadow"
         title="Click to change Hardware Status directly"
@@ -490,6 +462,7 @@ export function InlineCommercialCell({
           ))}
         </select>
       </div>
+      )}
     </div>
   )
 }
@@ -557,14 +530,6 @@ function ProjectWithDeliverablesGroup({
             }}
           />
         </td>
-        <td className="px-3 w-36">
-          <InlineProgressSelect
-            value={p.progress}
-            onChange={async (next) => {
-              try { await updateProject(p.id, { ...p, progress: next }) } catch (e) { onError(errorMessage(e)) }
-            }}
-          />
-        </td>
         <td className="px-3 whitespace-nowrap text-xs">{formatDate(p.baselineDate)}</td>
         <td className="px-3 text-xs text-slate-500" onClick={(e) => e.stopPropagation()}>
           <Button size="sm" variant="ghost" className="!py-1 !px-2 text-xs text-primary" onClick={onAddDeliverable}>
@@ -600,21 +565,7 @@ function ProjectWithDeliverablesGroup({
             <td className="px-3 py-2 font-mono text-slate-600 whitespace-nowrap">{w.mpn || '—'}</td>
             <td className="px-3 py-2 text-slate-600">{comm?.supplierName ?? '—'}</td>
             <td className="px-3 py-2">
-              <InlineStatusSelect
-                value={w.status}
-                options={WORKSTREAM_STATUSES}
-                onChange={async (next) => {
-                  try { await updateWorkstream(w.id, { ...w, status: next as WorkstreamStatus }) } catch (e) { onError(errorMessage(e)) }
-                }}
-              />
-            </td>
-            <td className="px-3 py-2 w-36">
-              <InlineProgressSelect
-                value={w.progress}
-                onChange={async (next) => {
-                  try { await updateWorkstream(w.id, { ...w, progress: next }) } catch (e) { onError(errorMessage(e)) }
-                }}
-              />
+              <InlineCommercialCell workstream={w} comm={comm} onError={onError} hwOnly />
             </td>
             <td className="px-3 py-2 whitespace-nowrap">
               {po?.expectedDelivery || po?.actualDelivery ? (
@@ -627,7 +578,7 @@ function ProjectWithDeliverablesGroup({
               )}
             </td>
             <td className="px-3 py-2">
-              <InlineCommercialCell workstream={w} comm={comm} onError={onError} />
+              <InlineCommercialCell workstream={w} comm={comm} onError={onError} hideHw />
             </td>
             <td className="px-3 py-2 whitespace-nowrap">
               <div className="flex items-center gap-1">

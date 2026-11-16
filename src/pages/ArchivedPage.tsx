@@ -14,7 +14,7 @@ import {
   type Supplier,
   type Workstream,
 } from '@/types'
-import { Badge, Button, Card, ConfirmDialog, EmptyState, Input, Loading, ProgressBar, Select } from '@/components/ui'
+import { Badge, Button, Card, ConfirmDialog, EmptyState, Input, Loading, Select } from '@/components/ui'
 import {
   CommercialBadge,
   buildDeliverableCommercialRows,
@@ -26,7 +26,7 @@ import { deleteProject } from '@/services/projectService'
 import { formatDate } from '@/utils/helpers'
 import { errorMessage } from '@/utils/validation'
 
-type SortKey = 'code' | 'hwType' | 'deviceName' | 'status' | 'progress' | 'target'
+type SortKey = 'code' | 'hwType' | 'deviceName' | 'status' | 'target'
 
 function deliverableDisplayName(w: Workstream) {
   if (w.category === 'Others' && w.name && w.name !== 'Others') return `Others (${w.name})`
@@ -65,8 +65,7 @@ export function ArchivedPage() {
     const q = search.trim().toLowerCase()
     const val = (p: Project): string | number => {
       switch (sort.key) {
-        case 'progress': return p.progress
-        case 'target': return p.baselineDate || '9999'
+            case 'target': return p.baselineDate || '9999'
         case 'status': return p.status
         case 'hwType': return (p.hwType || 'FT').toLowerCase()
         case 'deviceName': return (p.deviceName || '').toLowerCase()
@@ -136,8 +135,7 @@ export function ArchivedPage() {
                   <Th k="code">HRS Number / Deliverable</Th>
                   <Th k="hwType">HW Type / MPN</Th>
                   <Th k="deviceName">Device / Supplier</Th>
-                  <Th k="status">Status</Th>
-                  <Th k="progress">Progress</Th>
+                  <Th k="status">Status / HW Status</Th>
                   <Th k="target">HW Required / Delivery</Th>
                   <Th>Commercial & Hardware Status (Quote · PET · PO)</Th>
                   <Th>Actions</Th>
@@ -218,7 +216,6 @@ function ArchivedProjectGroup({
         <td className="px-3"><Badge color="blue">{p.hwType || 'FT'}</Badge></td>
         <td className="px-3 font-semibold text-slate-900">{p.deviceName || '—'}</td>
         <td className="px-3"><Badge>{p.status}</Badge></td>
-        <td className="px-3 w-36"><ProgressBar value={p.progress} /></td>
         <td className="px-3 whitespace-nowrap text-xs">{formatDate(p.baselineDate)}</td>
         <td className="px-3 text-xs text-slate-400">Archived (Non-Returnable)</td>
         <td className="px-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
@@ -253,8 +250,7 @@ function ArchivedProjectGroup({
             </td>
             <td className="px-3 py-2 font-mono text-slate-600 whitespace-nowrap">{w.mpn || '—'}</td>
             <td className="px-3 py-2 text-slate-600">{comm?.supplierName ?? '—'}</td>
-            <td className="px-3 py-2"><Badge>{w.status}</Badge></td>
-            <td className="px-3 py-2 w-36"><ProgressBar value={w.progress} /></td>
+            <td className="px-3 py-2"><CommercialBadge status={hwStatus} /></td>
             <td className="px-3 py-2 whitespace-nowrap text-slate-600">
               {po?.expectedDelivery || po?.actualDelivery ? (
                 <div>

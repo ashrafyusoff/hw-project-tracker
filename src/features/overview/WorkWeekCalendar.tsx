@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 import { CheckSquare, ChevronLeft, ChevronRight, ClipboardPaste, Copy, Flag, GripVertical, Scissors, X } from 'lucide-react'
 import type { Milestone, Project, Task } from '@/types'
 import { Badge, Button, Card } from '@/components/ui'
@@ -644,7 +644,7 @@ export function WorkWeekCalendar({
                               onDragStart={(e) => onDragStart(e, ref)}
                               onDragEnd={onDragEnd}
                               onClick={(e) => { e.stopPropagation(); setSelectedItem(ref); setSelectedDay(day.ymd); onEditTask?.(t) }}
-                              title={`Task: ${t.name}\nProject: ${projectCode(t.projectId)}\nStatus: ${t.status} (${t.progress}%)\nDue: ${t.dueDate}\nClick to edit`}
+                              title={`Task: ${t.name}\nProject: ${projectCode(t.projectId)}\nStatus: ${t.status}\nDue: ${t.dueDate}\nClick to edit`}
                               className={cn(
                                 'group relative cursor-grab active:cursor-grabbing rounded border shadow-sm transition-all select-none min-w-0',
                                 isTwoColMatrix ? 'px-1.5 py-1 text-[11px]' : 'px-2 py-1.5 text-xs',
@@ -680,3 +680,4 @@ export function WorkWeekCalendar({
     </Card>
   )
 }
+
