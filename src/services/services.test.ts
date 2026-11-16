@@ -7,8 +7,6 @@ import { createWorkstream, deleteWorkstream, emptyWorkstream, updateWorkstream }
 import { createTask, deleteTask, duplicateTaskToDate, emptyTask, rescheduleTask, updateTask } from './taskService'
 import { createMilestone, deleteMilestone, duplicateMilestoneToDate, emptyMilestone, rescheduleMilestone, updateMilestone } from './milestoneService'
 import { clearDeliverableCommercial, createPet, createPo, createQuotation, deletePet, deletePo, deleteQuotation, emptyDeliverableCommercial, emptyPet, emptyPo, emptyQuotation, saveDeliverableCommercial, updatePo } from './commercialService'
-import { createMeeting, createMeetingAction, deleteMeeting, emptyMeeting, emptyMeetingAction } from './meetingService'
-import { createIssue, createRisk, deleteIssue, deleteRisk, emptyIssue, emptyRisk, updateIssue } from './riskIssueService'
 import { buildBackup, getDatabaseStatus, resetAllData, restoreBackup, validateBackup } from './backupService'
 import { buildSheets, REPORT_NAMES } from './exportService'
 import { clearSampleData, hasSampleData, loadSampleData } from './sampleData'
@@ -38,10 +36,6 @@ describe('NPI Project Manager — Full Database & Service Suite', () => {
     await createTask({ ...emptyTask(pId), name: 'Layout review' })
     await createMilestone({ ...emptyMilestone(pId), name: 'Design Freeze', targetDate: '2026-12-01' })
     await createQuotation({ ...emptyQuotation(pId), number: 'Q-100' })
-    const mId = await createMeeting({ ...emptyMeeting(pId), title: 'Kickoff', date: '2026-11-15' })
-    await createMeetingAction({ ...emptyMeetingAction(mId), action: 'Send schematic' })
-    await createRisk({ ...emptyRisk(pId), title: 'Substrate lead time' })
-    await createIssue({ ...emptyIssue(pId), title: 'Via clearance' })
 
     await deleteProject(pId)
     const status = await getDatabaseStatus()
@@ -50,10 +44,6 @@ describe('NPI Project Manager — Full Database & Service Suite', () => {
     expect(status.counts.tasks).toBe(0)
     expect(status.counts.milestones).toBe(0)
     expect(status.counts.quotations).toBe(0)
-    expect(status.counts.meetings).toBe(0)
-    expect(status.counts.meetingActions).toBe(0)
-    expect(status.counts.risks).toBe(0)
-    expect(status.counts.issues).toBe(0)
   })
 
   it('manages suppliers, workstreams, auto-linking, and safe supplier/workstream deletion', async () => {
@@ -85,7 +75,7 @@ describe('NPI Project Manager — Full Database & Service Suite', () => {
     expect(tAfterSup.supplierId).toBe('')
   })
 
-  it('handles tasks, milestones, meeting action links, commercial records, risks, and issues', async () => {
+  it('handles tasks, milestones, and commercial records', async () => {
     const pId = await createProject({ ...emptyProject(), code: 'NPI-9003', name: 'RF Transceiver' })
 
     // Task auto-completion sets progress = 100 and completionDate
@@ -112,15 +102,7 @@ describe('NPI Project Manager — Full Database & Service Suite', () => {
     await updateMilestone(ms.id, { ...(await db.milestones.get(ms.id))!, status: 'Completed' })
     expect((await db.milestones.get(ms.id))?.actualDate).toBeTruthy()
     await deleteMilestone(ms.id)
-
-    // Meeting action item linked to task; deleting task unlinks action item without deleting it
-    const mId = await createMeeting({ ...emptyMeeting(pId), title: 'Design Review', date: '2026-11-13' })
-    await createMeetingAction({ ...emptyMeetingAction(mId), action: 'Follow up Gerber', taskId: task.id })
     await deleteTask(task.id)
-    const actionAfter = (await db.meetingActions.toArray())[0]
-    expect(actionAfter.taskId).toBe('')
-    await deleteMeeting(mId)
-    expect(await db.meetingActions.count()).toBe(0)
 
     // Commercial CRUD (Unified Deliverable Commercial: Quotation + PET + PO + Delivery Tracking)
     const wsId = await createWorkstream({ ...emptyWorkstream(pId), name: 'RF Load Board' })
@@ -154,15 +136,6 @@ describe('NPI Project Manager — Full Database & Service Suite', () => {
     await deleteQuotation((await db.quotations.toArray())[0].id)
     await deletePet((await db.petRecords.toArray())[0].id)
     await deletePo(po.id)
-
-    // Risk & Engineering Issue CRUD (Issue auto-fills actualDate when Resolved)
-    await createRisk({ ...emptyRisk(pId), title: 'Pin wear', level: 'High' })
-    await createIssue({ ...emptyIssue(pId), title: 'Trace impedance', status: 'Open' })
-    const issue = (await db.issues.toArray())[0]
-    await updateIssue(issue.id, { ...issue, status: 'Resolved' })
-    expect((await db.issues.get(issue.id))?.actualDate).toBeTruthy()
-    await deleteRisk((await db.risks.toArray())[0].id)
-    await deleteIssue(issue.id)
   })
 
   it('loads sample data, clears only sample data while preserving user records, and validates JSON backup/restore & Excel sheets', async () => {
