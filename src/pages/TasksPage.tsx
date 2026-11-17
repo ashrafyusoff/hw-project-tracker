@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { GanttChart, Plus, Table2 } from 'lucide-react'
 import { useTable } from '@/hooks/useTable'
 import { usePersistedState } from '@/hooks/usePersistedState'
-import { MILESTONE_STATUSES, PRIORITIES, TASK_STATUSES, type Milestone, type Project, type Supplier, type Task, type Workstream } from '@/types'
+import { PRIORITIES, TASK_STATUSES, type Milestone, type Project, type Supplier, type Task, type Workstream } from '@/types'
 import { Button, Card, ConfirmDialog, EmptyState, Input, Loading, Select } from '@/components/ui'
 import { TaskForm } from '@/features/tasks/TaskForm'
 import { MilestoneForm } from '@/features/tasks/MilestoneForm'
@@ -71,8 +71,7 @@ export function TasksPage() {
   const projectOptions = [{ value: '', label: 'All projects' }, ...projects.map((p) => ({ value: p.id, label: p.code }))]
   const switchSection = (s: 'tasks' | 'milestones') => {
     setSection(s)
-    const allowed = s === 'tasks' ? (TASK_STATUSES as readonly string[]) : (MILESTONE_STATUSES as readonly string[])
-    if (fStatus && !allowed.includes(fStatus)) setFStatus('')
+    if (s === 'tasks' && fStatus && !(TASK_STATUSES as readonly string[]).includes(fStatus)) setFStatus('')
     setError('')
   }
   const tabCls = (on: boolean) => `px-3 py-2 text-sm border-b-2 -mb-px ${on ? 'border-primary text-primary font-medium' : 'border-transparent text-slate-500 hover:text-slate-800'}`
@@ -89,7 +88,7 @@ export function TasksPage() {
         <Select className="!w-36" value={fProject} onChange={(e) => setFProject(e.target.value)} options={projectOptions} />
         {section === 'tasks' && <Select className="!w-48" value={fSupplier} onChange={(e) => setFSupplier(e.target.value)}
           options={[{ value: '', label: 'All suppliers' }, ...suppliers.map((s) => ({ value: s.id, label: s.name }))]} />}
-        <Select className="!w-44" value={fStatus} onChange={(e) => setFStatus(e.target.value)} options={all('All statuses', section === 'tasks' ? TASK_STATUSES : MILESTONE_STATUSES)} />
+        {section === 'tasks' && <Select className="!w-44" value={fStatus} onChange={(e) => setFStatus(e.target.value)} options={all('All statuses', TASK_STATUSES)} />}
         {section === 'tasks' && <Select className="!w-36" value={fPriority} onChange={(e) => setFPriority(e.target.value)} options={all('All priorities', PRIORITIES)} />}
         {section === 'tasks' && (
           <label className="flex items-center gap-1.5 text-sm text-slate-600"><input type="checkbox" checked={onlyOverdue} onChange={(e) => setOnlyOverdue(e.target.checked)} /> Overdue only</label>

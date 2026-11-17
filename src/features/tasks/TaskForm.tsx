@@ -23,7 +23,7 @@ export function TaskForm({
 }) {
   return (
     <Modal open={open} onClose={onClose} title={task ? 'Edit Task' : 'Add Task'} wide>
-      <Body
+      <TaskFormBody
         key={`${open ? 'open' : 'closed'}-${task?.id ?? 'new'}-${task?.updatedAt ?? ''}-${defaultProjectId ?? ''}-${nonNpiOnly ? 'nonnpi' : 'all'}`}
         task={task}
         defaultProjectId={defaultProjectId}
@@ -34,10 +34,10 @@ export function TaskForm({
   )
 }
 
-function Body({
+export function TaskFormBody({
   task,
   defaultProjectId,
-  nonNpiOnly,
+  nonNpiOnly = false,
   onClose,
 }: {
   task?: Task

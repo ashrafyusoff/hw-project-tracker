@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MILESTONE_STATUSES, type Milestone, type Project } from '@/types'
+import { type Milestone, type Project } from '@/types'
 import { createMilestone, emptyMilestone, updateMilestone, type MilestoneInput } from '@/services/milestoneService'
 import { useTable } from '@/hooks/useTable'
 import { errorMessage } from '@/utils/validation'
@@ -8,12 +8,12 @@ import { Button, Field, FormError, Input, Modal, Select, Textarea } from '@/comp
 export function MilestoneForm({ open, milestone, defaultProjectId, onClose }: { open: boolean; milestone?: Milestone; defaultProjectId?: string; onClose: () => void }) {
   return (
     <Modal open={open} onClose={onClose} title={milestone ? 'Edit Milestone' : 'Add Milestone'}>
-      <Body key={`${open ? 'open' : 'closed'}-${milestone?.id ?? 'new'}-${milestone?.updatedAt ?? ''}`} milestone={milestone} defaultProjectId={defaultProjectId} onClose={onClose} />
+      <MilestoneFormBody key={`${open ? 'open' : 'closed'}-${milestone?.id ?? 'new'}-${milestone?.updatedAt ?? ''}`} milestone={milestone} defaultProjectId={defaultProjectId} onClose={onClose} />
     </Modal>
   )
 }
 
-function Body({ milestone, defaultProjectId, onClose }: { milestone?: Milestone; defaultProjectId?: string; onClose: () => void }) {
+export function MilestoneFormBody({ milestone, defaultProjectId, onClose }: { milestone?: Milestone; defaultProjectId?: string; onClose: () => void }) {
   const projects = useTable<Project>('projects') ?? []
   const [form, setForm] = useState<MilestoneInput>(milestone ? { ...milestone, workstreamId: '' } : emptyMilestone(defaultProjectId))
   const [error, setError] = useState('')
@@ -50,7 +50,6 @@ function Body({ milestone, defaultProjectId, onClose }: { milestone?: Milestone;
         <Field label="Target Date" required><Input type="date" value={form.targetDate} onChange={(e) => set('targetDate', e.target.value)} /></Field>
         <Field label="Actual Completion Date"><Input type="date" value={form.actualDate} onChange={(e) => set('actualDate', e.target.value)} /></Field>
       </div>
-      <Field label="Status"><Select options={MILESTONE_STATUSES} value={form.status} onChange={(e) => set('status', e.target.value as MilestoneInput['status'])} /></Field>
       <Field label="Remarks"><Textarea value={form.remarks} onChange={(e) => set('remarks', e.target.value)} /></Field>
       <div className="flex justify-end gap-2">
         <Button type="button" onClick={onClose}>Cancel</Button>

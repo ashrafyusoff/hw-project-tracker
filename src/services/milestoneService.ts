@@ -1,6 +1,6 @@
 import { db } from '@/database/db'
 import type { Milestone } from '@/types'
-import { newId, nowIso, todayStr } from '@/utils/helpers'
+import { newId, nowIso } from '@/utils/helpers'
 import { ValidationError, requireText } from '@/utils/validation'
 import { logActivity } from './activityService'
 
@@ -13,9 +13,7 @@ function validate(i: MilestoneInput) {
 }
 
 function normalise(i: MilestoneInput): MilestoneInput {
-  const out = { ...i, name: i.name.trim() }
-  if (out.status === 'Completed' && !out.actualDate) out.actualDate = todayStr()
-  return out
+  return { ...i, name: i.name.trim() }
 }
 
 export async function createMilestone(input: MilestoneInput) {
@@ -36,9 +34,7 @@ export async function updateMilestone(id: string, input: MilestoneInput) {
   if (!old) throw new ValidationError('Milestone no longer exists.')
   await db.transaction('rw', [db.milestones, db.activityLogs], async () => {
     await db.milestones.update(id, { ...data, updatedAt: nowIso() })
-    const changed = old.status !== data.status
-    await logActivity('Milestone', id, data.projectId, changed ? 'Status Changed' : 'Updated',
-      changed ? `Milestone "${data.name}" status: ${old.status} → ${data.status}` : `Milestone "${data.name}" updated`)
+    await logActivity('Milestone', id, data.projectId, 'Updated', `Milestone "${data.name}" updated`)
   })
 }
 
@@ -51,13 +47,13 @@ export async function deleteMilestone(id: string) {
   })
 }
 
-export async function rescheduleMilestone(id: string, newTargetDate: string) {
+export async function rescheduleMilestone(id: string, newActualDate: string) {
   const old = await db.milestones.get(id)
   if (!old) throw new ValidationError('Milestone no longer exists.')
-  if (old.targetDate === newTargetDate) return
+  if ((old.actualDate || old.targetDate) === newActualDate) return
   await db.transaction('rw', [db.milestones, db.activityLogs], async () => {
-    await db.milestones.update(id, { targetDate: newTargetDate, updatedAt: nowIso() })
-    await logActivity('Milestone', id, old.projectId, 'Updated', `Milestone "${old.name}" moved to ${newTargetDate}`)
+    await db.milestones.update(id, { actualDate: newActualDate, updatedAt: nowIso() })
+    await logActivity('Milestone', id, old.projectId, 'Updated', `Milestone "${old.name}" moved to ${newActualDate}`)
   })
 }
 
