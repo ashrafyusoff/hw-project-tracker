@@ -109,6 +109,8 @@ export interface Task extends BaseRecord {
   supplierId: string
   startDate: string
   dueDate: string
+  startTime?: string // HH:mm (24h)
+  endTime?: string // HH:mm (24h)
   completionDate: string
   priority: Priority
   status: TaskStatus

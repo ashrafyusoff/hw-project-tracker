@@ -459,6 +459,19 @@ export async function loadSampleData() {
 
   // ---------- Tasks (Spanning Past 8 Weeks, Current Week, and Next 8 Weeks for the 17-Week Workload Chart) ----------
   type TS = 'Not Started' | 'In Progress' | 'On Hold' | 'Waiting for Supplier' | 'Under Review' | 'Completed' | 'Cancelled'
+  const TIME_SLOTS: readonly [string, string][] = [
+    ['08:30', '10:00'],
+    ['09:00', '10:30'],
+    ['10:00', '11:30'],
+    ['11:00', '12:00'],
+    ['13:00', '14:30'],
+    ['14:00', '16:00'],
+    ['15:00', '16:30'],
+    ['16:00', '17:30'],
+    ['09:30', '11:00'],
+    ['13:30', '15:00'],
+  ]
+  let taskSlotIdx = 0
   const task = (
     projectId: string,
     workstreamId: string,
@@ -470,21 +483,26 @@ export async function loadSampleData() {
     priority: 'Low' | 'Medium' | 'High' | 'Critical',
     status: TS,
     progress: number,
-  ) => ({
-    ...base(),
-    projectId,
-    workstreamId,
-    name,
-    assignee,
-    supplierId,
-    startDate: d(s),
-    dueDate: d(due),
-    completionDate: status === 'Completed' ? d(due) : '',
-    priority,
-    status,
-    progress,
-    remarks: '',
-  })
+  ) => {
+    const [startTime, endTime] = TIME_SLOTS[(taskSlotIdx++ * 3) % TIME_SLOTS.length]
+    return {
+      ...base(),
+      projectId,
+      workstreamId,
+      name,
+      assignee,
+      supplierId,
+      startDate: d(s),
+      dueDate: d(due),
+      startTime,
+      endTime,
+      completionDate: status === 'Completed' ? d(due) : '',
+      priority,
+      status,
+      progress,
+      remarks: '',
+    }
+  }
 
   // Historical NPI & Non-NPI Tasks across Past 8 Weeks (-56d to -7d)
   const hist1 = task(falcon.id, wFalconPcb.id, 'Define FX7200 power rail decoupling budget', 'Me', '', -56, -53, 'High', 'Completed', 100)

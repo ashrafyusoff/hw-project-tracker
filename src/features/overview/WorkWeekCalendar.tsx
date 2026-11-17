@@ -193,7 +193,7 @@ export function WorkWeekCalendar({
     setInternalMonday(next)
     onBaseMondayChange?.(next)
   }
-  // Customizable number of weeks (4..10, default 4) — saved in localStorage
+  // Customizable number of weeks (1..10, default 4) — saved in localStorage
   const [weeksToShow, setWeeksToShow] = usePersistedState<number>('npi.calendar.weeksToShow', 4)
   const clampedWeeks = Math.max(4, Math.min(10, weeksToShow))
   const [filterProject, setFilterProject] = usePersistedState<string>('npi.calendar.filterProject', '')
@@ -259,12 +259,17 @@ export function WorkWeekCalendar({
     })
   }
 
+  // Navigate by 1 week (used in Weekly Hours view)
+  function shiftWeek(deltaWeeks: number) {
+    setBaseMonday((prev) => addDays(prev, deltaWeeks * 7))
+  }
+
   function goToCurrentWeek() {
     setBaseMonday(getMondayOfWeek(parseYmd(today)))
   }
 
   const weeks = useMemo(() => {
-    const count = clampedWeeks
+    const count = Math.max(1, Math.min(10, weeksToShow))
     return Array.from({ length: count }, (_, wIdx) => {
       const monday = addDays(baseMonday, wIdx * 7)
       const ww = getIsoWeek(monday)
@@ -287,7 +292,7 @@ export function WorkWeekCalendar({
         days,
       }
     })
-  }, [baseMonday, clampedWeeks, today])
+  }, [baseMonday, weeksToShow, today])
 
   // Set of Mondays currently displayed in the workweek schedule (for highlighting in the mini calendar)
   const displayedMondays = useMemo(() => new Set(weeks.map((w) => w.mondayYmd)), [weeks])
@@ -450,6 +455,28 @@ export function WorkWeekCalendar({
       }
     } catch {
       // ignore invalid drag payload
+    }
+  }
+
+  async function handleDropTaskAtTime(taskId: string, targetYmd: string, startTime: string, endTime: string, ww: number) {
+    setDragOverCell('')
+    setDraggingId('')
+    try {
+      await rescheduleTask(taskId, targetYmd, startTime, endTime)
+      showToast(`Task moved to WW${String(ww).padStart(2, '0')} (${targetYmd} ${startTime}–${endTime})`)
+    } catch {
+      // ignore if deleted
+    }
+  }
+
+  async function handleDropMilestone(milestoneId: string, targetYmd: string, ww: number) {
+    setDragOverCell('')
+    setDraggingId('')
+    try {
+      await rescheduleMilestone(milestoneId, targetYmd)
+      showToast(`Milestone moved to WW${String(ww).padStart(2, '0')} (${targetYmd})`)
+    } catch {
+      // ignore if deleted
     }
   }
 
@@ -705,7 +732,7 @@ export function WorkWeekCalendar({
         </aside>
 
         {/* RIGHT: 5-Day Workweek Schedule */}
-        <div className="lg:ml-[240px] overflow-x-auto">
+        <div className="flex-1 overflow-x-auto">
           <div className="min-w-[820px]">
             {/* 5-day Workweek Header */}
             <div className="grid grid-cols-[120px_repeat(5,minmax(0,1fr))] bg-slate-100 border-b border-slate-200 text-xs font-semibold text-slate-700">
