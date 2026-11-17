@@ -483,10 +483,10 @@ export function WorkWeekCalendar({
   const rangeLabel = `${weeks[0].mondayLabel} – ${weeks[weeks.length - 1].fridayLabel} ${weeks[weeks.length - 1].year}`
 
   return (
-    <Card
-      title="Workweek Schedule — Tasks & Milestones"
-      className="xl:col-span-3"
-      action={
+    <Card className="xl:col-span-3">
+      {/* Row 1: Title | Row 2: Project filter, Weeks, Month navigation, Date range */}
+      <header className="-mx-4 -mt-4 mb-3 px-4 py-3 border-b border-slate-100 space-y-2">
+        <h2 className="text-sm font-semibold text-slate-800">Workweek Schedule — Tasks & Milestones</h2>
         <div className="flex flex-wrap items-center gap-2">
           <select
             value={filterProject}
@@ -517,10 +517,9 @@ export function WorkWeekCalendar({
             <Button size="sm" onClick={goToCurrentWeek}>Current Week</Button>
             <Button size="sm" onClick={() => shiftMonth(1)} title="Next month">Next Month <ChevronRight className="h-3.5 w-3.5" /></Button>
           </div>
-          <span className="text-xs text-slate-600 font-semibold min-w-[135px] text-right">{rangeLabel}</span>
+          <span className="text-xs text-slate-600 font-semibold ml-auto">{rangeLabel}</span>
         </div>
-      }
-    >
+      </header>
       {/* Priority Colour Legend (click box = set selected task priority; click word = filter/dim) + Instructions */}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
         <div className="flex flex-wrap items-center gap-3">
@@ -732,7 +731,7 @@ export function WorkWeekCalendar({
         </aside>
 
         {/* RIGHT: 5-Day Workweek Schedule */}
-        <div className="flex-1 overflow-x-auto">
+        <div className="lg:ml-[240px] overflow-x-auto">
           <div className="min-w-[820px]">
             {/* 5-day Workweek Header */}
             <div className="grid grid-cols-[120px_repeat(5,minmax(0,1fr))] bg-slate-100 border-b border-slate-200 text-xs font-semibold text-slate-700">
@@ -956,11 +955,11 @@ export function WorkWeekCalendar({
           )}
         </div>
       </aside>
-      {/* Temporary floating pop-up toast */}
+      {/* Temporary floating pop-up toast (centered above calendar) */}
       {toast && (
         <div
           role="status"
-          className="fixed bottom-4 right-4 z-50 rounded-md border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-xs font-medium text-emerald-800 shadow-lg"
+          className="fixed top-16 left-1/2 -translate-x-1/2 z-50 rounded-md border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-900 shadow-lg"
         >
           {toast}
         </div>
