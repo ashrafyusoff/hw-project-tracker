@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, GitBranch, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, GitBranch, ListChecks, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useTable } from '@/hooks/useTable'
 import { usePersistedState } from '@/hooks/usePersistedState'
 import {
@@ -16,12 +16,14 @@ import {
   type ProjectStatus,
   type Quotation,
   type Supplier,
+  type Task,
   type Workstream,
   type WorkstreamStatus,
 } from '@/types'
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Input, Loading, Select } from '@/components/ui'
 import { ProjectForm } from '@/features/projects/ProjectForm'
 import { WorkstreamForm } from '@/features/projects/WorkstreamForm'
+import { DeliverableTasksModal } from '@/features/projects/DeliverableTasksModal'
 import {
   CommercialBadge,
   buildDeliverableCommercialRows,
@@ -41,6 +43,7 @@ const COLLAPSED_STORAGE_KEY = 'npi.projects.collapsedIds'
 export function ProjectsPage() {
   const projects = useTable<Project>('projects')
   const workstreams = useTable<Workstream>('workstreams')
+  const tasks = useTable<Task>('tasks')
   const suppliers = useTable<Supplier>('suppliers')
   const quotations = useTable<Quotation>('quotations')
   const pets = useTable<PetRecord>('petRecords')
@@ -66,6 +69,7 @@ export function ProjectsPage() {
   const [wsProjectId, setWsProjectId] = useState('')
   const [wsEditing, setWsEditing] = useState<Workstream | undefined>()
   const [wsDeleting, setWsDeleting] = useState<Workstream | undefined>()
+  const [wsTasksTarget, setWsTasksTarget] = useState<Workstream | undefined>()
 
   const [error, setError] = useState('')
 
@@ -196,6 +200,7 @@ export function ProjectsPage() {
                       key={p.id}
                       project={p}
                       deliverables={pDeliverables}
+                      tasks={tasks ?? []}
                       commByDeliverable={commByDeliverable}
                       collapsed={isCollapsed}
                       onToggleCollapse={() => setCollapsedIds((prev) => ({ ...prev, [p.id]: !prev[p.id] }))}
@@ -206,6 +211,7 @@ export function ProjectsPage() {
                       onAddDeliverable={() => { setWsProjectId(p.id); setWsEditing(undefined); setWsOpen(true) }}
                       onEditDeliverable={(w) => { setWsProjectId(p.id); setWsEditing(w); setWsOpen(true) }}
                       onDeleteDeliverable={(w) => setWsDeleting(w)}
+                      onOpenDeliverableTasks={(w) => setWsTasksTarget(w)}
                       onError={(msg) => setError(msg)}
                     />
                   )
@@ -218,6 +224,12 @@ export function ProjectsPage() {
 
       <ProjectForm open={formOpen} project={editing} onClose={() => setFormOpen(false)} />
       <WorkstreamForm open={wsOpen} projectId={wsProjectId} workstream={wsEditing} suppliers={suppliers} onClose={() => setWsOpen(false)} />
+      <DeliverableTasksModal
+        open={!!wsTasksTarget}
+        workstream={wsTasksTarget}
+        project={projects.find((p) => p.id === wsTasksTarget?.projectId)}
+        onClose={() => setWsTasksTarget(undefined)}
+      />
 
       <ConfirmDialog
         open={!!deleting}
@@ -470,6 +482,7 @@ export function InlineCommercialCell({
 function ProjectWithDeliverablesGroup({
   project: p,
   deliverables,
+  tasks,
   commByDeliverable,
   collapsed,
   onToggleCollapse,
@@ -480,10 +493,12 @@ function ProjectWithDeliverablesGroup({
   onAddDeliverable,
   onEditDeliverable,
   onDeleteDeliverable,
+  onOpenDeliverableTasks,
   onError,
 }: {
   project: Project
   deliverables: Workstream[]
+  tasks: Task[]
   commByDeliverable: Map<string, DeliverableCommercialRow>
   collapsed: boolean
   onToggleCollapse: () => void
@@ -494,6 +509,7 @@ function ProjectWithDeliverablesGroup({
   onAddDeliverable: () => void
   onEditDeliverable: (w: Workstream) => void
   onDeleteDeliverable: (w: Workstream) => void
+  onOpenDeliverableTasks: (w: Workstream) => void
   onError: (msg: string) => void
 }) {
   return (
@@ -582,6 +598,16 @@ function ProjectWithDeliverablesGroup({
             </td>
             <td className="px-3 py-2 whitespace-nowrap">
               <div className="flex items-center gap-1">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="!h-7 !px-2 text-[11px]"
+                  title="View & manage tasks for this deliverable"
+                  onClick={() => onOpenDeliverableTasks(w)}
+                >
+                  <ListChecks className="h-3.5 w-3.5 text-primary" />
+                  Tasks ({tasks.filter((t) => t.workstreamId === w.id).length})
+                </Button>
                 <Button variant="ghost" size="sm" title="Edit Deliverable & Commercial" onClick={() => onEditDeliverable(w)}>
                   <Pencil className="h-3.5 w-3.5" />
                 </Button>

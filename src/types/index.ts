@@ -115,6 +115,8 @@ export interface Task extends BaseRecord {
   priority: Priority
   status: TaskStatus
   progress: number
+  workingDays?: number
+  dependsOnTaskId?: string
   remarks: string
 }
 

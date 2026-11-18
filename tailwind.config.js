@@ -7,7 +7,11 @@ export default {
       colors: {
         primary: { DEFAULT: '#2563eb', hover: '#1d4ed8', soft: '#eff6ff' },
       },
-      fontFamily: { sans: ['Inter', 'system-ui', 'Segoe UI', 'sans-serif'] },
+      fontFamily: {
+        sans: ['"Inter"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'sans-serif'],
+        serif: ['"Inter"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'sans-serif'],
+        mono: ['"Inter"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'sans-serif'],
+      },
     },
   },
   plugins: [],

@@ -10,8 +10,20 @@ html.dark {
   color-scheme: dark;
 }
 
+*, *::before, *::after, body, button, input, select, textarea, table, th, td, h1, h2, h3, h4, .font-mono {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+}
+
 body {
-  @apply bg-slate-100 text-slate-800 antialiased transition-colors duration-200;
+  @apply text-slate-800 antialiased transition-colors duration-200;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: normal;
+  background-color: #f5f5f7;
+}
+
+h1, h2, h3, h4 {
+  letter-spacing: -0.01em;
 }
 
 html.dark body {
@@ -19,38 +31,87 @@ html.dark body {
   color: #f1f5f9;
 }
 
-/* Make borders, table lines, and dividers clearly visible across the entire website */
+/* Apple Clean Flat Style — crisp geometry, subtle elevation, zero blur lag */
+.liquid-glass {
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.02);
+}
+
+.liquid-card-header {
+  background-color: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.liquid-glass-chrome {
+  background-color: #ffffff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+
+.liquid-glass-pill {
+  background-color: #f5f5f7;
+  border: 1px solid #e2e8f0;
+}
+
+html.dark .liquid-glass {
+  background-color: #1e293b !important;
+  border-color: #334155 !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
+}
+
+html.dark .liquid-card-header {
+  background-color: #162032 !important;
+  border-bottom-color: #334155 !important;
+}
+
+html.dark .liquid-glass-chrome {
+  background-color: #1e293b !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35) !important;
+}
+
+html.dark .liquid-glass-pill {
+  background-color: #0f172a !important;
+  border-color: #334155 !important;
+}
+
+/* Make borders, table lines, and dividers clean and readable */
 .border-slate-100 {
-  border-color: #cbd5e1 !important;
+  border-color: #e2e8f0 !important;
 }
 .border-slate-200 {
-  border-color: #94a3b8 !important;
+  border-color: #cbd5e1 !important;
 }
 .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
-  border-color: #cbd5e1 !important;
+  border-color: #e2e8f0 !important;
 }
 
 /* Clear grid lines inside all data tables */
 table th,
 table td {
-  border-bottom: 1px solid #cbd5e1;
-  border-right: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  border-right: 1px solid #f1f5f9;
 }
 table th:last-child,
 table td:last-child {
   border-right: none;
 }
 table thead th {
-  border-bottom: 2px solid #94a3b8;
-  background-color: #f1f5f9;
+  border-bottom: 1px solid #cbd5e1;
+  background-color: #f8fafc;
+  color: #334155;
 }
 
-/* Dark mode overrides */
-html.dark .bg-white {
-  background-color: #1e293b !important;
-}
+/* Dark mode overrides — ensure ALL white/light variants turn dark so text is always readable */
+html.dark .bg-white,
+html.dark .bg-white\/40,
+html.dark .bg-white\/50,
+html.dark .bg-white\/60,
+html.dark .bg-white\/70,
+html.dark .bg-white\/75,
 html.dark .bg-white\/80,
-html.dark .bg-white\/90 {
+html.dark .bg-white\/85,
+html.dark .bg-white\/90,
+html.dark .bg-white\/95 {
   background-color: rgba(30, 41, 59, 0.9) !important;
 }
 html.dark .bg-slate-50,
@@ -238,9 +299,9 @@ html.dark table td {
   border-right-color: #293548;
 }
 html.dark table thead th {
-  border-bottom-color: #475569;
-  background-color: #162032;
-  color: #e2e8f0;
+  border-bottom-color: #475569 !important;
+  background: #162032 !important;
+  color: #e2e8f0 !important;
 }
 
 html.dark input,

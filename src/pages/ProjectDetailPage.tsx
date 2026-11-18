@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Archive, ArrowLeft, Calendar, Cpu, FileSpreadsheet, GitBranch, Layers, Pencil, Plus, Server, Trash2, X } from 'lucide-react'
+import { Archive, ArrowLeft, Calendar, Cpu, FileSpreadsheet, GitBranch, Layers, ListChecks, Pencil, Plus, Server, Trash2, X } from 'lucide-react'
 import { db } from '@/database/db'
 import { isArchivedStatus, type Milestone, type Supplier, type Task, type Workstream } from '@/types'
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Loading, Select } from '@/components/ui'
 import { ProjectForm } from '@/features/projects/ProjectForm'
 import { WorkstreamForm } from '@/features/projects/WorkstreamForm'
+import { DeliverableTasksModal } from '@/features/projects/DeliverableTasksModal'
 import { ProjectGanttChart } from '@/features/projects/ProjectGanttChart'
 import { TaskForm } from '@/features/tasks/TaskForm'
 import { MilestoneForm } from '@/features/tasks/MilestoneForm'
@@ -80,6 +81,7 @@ export function ProjectDetailPage() {
   const [wsOpen, setWsOpen] = useState(false)
   const [wsEditing, setWsEditing] = useState<Workstream | undefined>()
   const [wsDeleting, setWsDeleting] = useState<Workstream | undefined>()
+  const [wsTasksTarget, setWsTasksTarget] = useState<Workstream | undefined>()
   const [taskOpen, setTaskOpen] = useState(false)
   const [taskEditing, setTaskEditing] = useState<Task | undefined>()
   const [taskDeleting, setTaskDeleting] = useState<Task | undefined>()
@@ -313,7 +315,17 @@ export function ProjectDetailPage() {
                     <td className="text-slate-500 max-w-xs truncate">{w.remarks || po?.remarks || '—'}</td>
                     {!archived && (
                       <td>
-                        <div className="flex gap-1">
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="!h-7 !px-2 text-[11px]"
+                            title="View & manage tasks for this deliverable"
+                            onClick={() => setWsTasksTarget(w)}
+                          >
+                            <ListChecks className="h-3.5 w-3.5 text-primary" />
+                            Tasks ({tasks.filter((t) => t.workstreamId === w.id).length})
+                          </Button>
                           <Button variant="ghost" size="sm" title="Edit Deliverable & Commercial" onClick={() => { setWsEditing(w); setWsOpen(true) }}>
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
@@ -399,6 +411,7 @@ export function ProjectDetailPage() {
         message={<>Delete milestone <b>{msDeleting?.name}</b>?</>} />
       <ProjectForm open={editOpen} project={p} onClose={() => setEditOpen(false)} />
       <WorkstreamForm open={wsOpen} projectId={p.id} workstream={wsEditing} suppliers={suppliers} onClose={() => setWsOpen(false)} />
+      <DeliverableTasksModal open={!!wsTasksTarget} workstream={wsTasksTarget} project={p} onClose={() => setWsTasksTarget(undefined)} />
       <ConfirmDialog open={!!wsDeleting} title="Delete deliverable?" onCancel={() => setWsDeleting(undefined)}
         onConfirm={() => run(async () => { await deleteWorkstream(wsDeleting!.id); setWsDeleting(undefined) })}
         message={<>Delete deliverable <b>{wsDeleting ? deliverableDisplayName(wsDeleting) : ''}</b>? Tasks and milestones linked to it are kept but no longer assigned to a deliverable.</>} />

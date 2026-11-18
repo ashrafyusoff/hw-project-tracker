@@ -16,8 +16,8 @@ export function AppLayout() {
       <div className={cn('min-h-screen flex flex-col transition-[padding] duration-150', collapsed ? 'pl-16' : 'pl-60')}>
         <TopBar />
         <main className="flex-1 w-full p-4 sm:p-6 max-w-[1440px] mx-auto"><Outlet /></main>
-        <footer className="border-t border-slate-200 bg-white/80 px-6 py-2.5 text-center text-xs text-slate-500">
-          HW Project Management · Website by <span className="font-semibold text-slate-700">Pacca1214</span>
+        <footer className="border-t border-slate-200 liquid-glass-chrome px-6 py-2.5 text-center text-xs text-slate-500">
+          HW Tracker · Website by <span className="font-semibold text-slate-700">Pacca1214</span>
         </footer>
       </div>
     </div>

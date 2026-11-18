@@ -253,7 +253,7 @@ export function SettingsPage() {
       {msg && <p className={`rounded-md px-3 py-2 text-sm ${msg.type === 'ok' ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}`}>{msg.text}</p>}
 
       <Card title="Appearance (Dark / Light Mode)">
-        <p className="text-sm text-slate-500 mb-3">Choose between Light Mode and Dark Mode across HW Project Management.</p>
+        <p className="text-sm text-slate-500 mb-3">Choose between Light Mode and Dark Mode across HW Tracker.</p>
         <div className="flex flex-wrap gap-2">
           <Button
             variant={theme === 'light' ? 'primary' : 'secondary'}
@@ -515,7 +515,7 @@ export function SettingsPage() {
 
       <Card title="About">
         <p className="text-sm text-slate-600">
-          <b>HW Project Management</b> — Hardware Project Management Application · Website by <b className="text-primary">Pacca1214</b>
+          <b>HW Tracker</b> — Hardware Project Management Application · Website by <b className="text-primary">Pacca1214</b>
         </p>
       </Card>
 

@@ -11,6 +11,8 @@ import {
 } from '@/types'
 import { createWorkstream, emptyWorkstream, updateWorkstream, type WorkstreamInput } from '@/services/workstreamService'
 import { emptyDeliverableCommercial, saveDeliverableCommercial, type DeliverableCommercialInput } from '@/services/commercialService'
+import { createTasksFromDeliverableTemplate, findTemplateForDeliverable } from '@/services/deliverableTemplateService'
+import { todayStr } from '@/utils/helpers'
 import { errorMessage } from '@/utils/validation'
 import { Button, Field, FormError, Input, Loading, Modal, Select, Textarea } from '@/components/ui'
 
@@ -148,6 +150,8 @@ function Body({
 
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [autoCreateTasks, setAutoCreateTasks] = useState(!workstream)
+  const [taskStartDate, setTaskStartDate] = useState(() => todayStr())
 
   const set = <K extends keyof WorkstreamInput>(k: K, v: WorkstreamInput[K]) => setForm((f) => ({ ...f, [k]: v }))
   const setC = <K extends keyof DeliverableCommercialInput>(k: K, v: DeliverableCommercialInput[K]) => setComm((c) => ({ ...c, [k]: v }))
@@ -177,6 +181,15 @@ function Body({
         await updateWorkstream(workstream.id, payload)
       } else {
         wsId = await createWorkstream(payload)
+        if (autoCreateTasks) {
+          await createTasksFromDeliverableTemplate({
+            projectId: payload.projectId,
+            workstreamId: wsId,
+            supplierId: payload.supplierId,
+            categoryOrName: deliverableName,
+            startDate: taskStartDate,
+          })
+        }
       }
 
       await saveDeliverableCommercial(
@@ -257,6 +270,30 @@ function Body({
             />
           </Field>
         </div>
+
+        {!workstream && (
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200/80 text-xs">
+            <label className="inline-flex items-center gap-2 text-slate-700 font-medium cursor-pointer">
+              <input
+                type="checkbox"
+                checked={autoCreateTasks}
+                onChange={(e) => setAutoCreateTasks(e.target.checked)}
+              />
+              Auto-create {findTemplateForDeliverable(isOthers && form.name.trim() ? form.name.trim() : form.category).length} sub-tasks from Deliverables template
+            </label>
+            {autoCreateTasks && (
+              <label className="inline-flex items-center gap-1.5 text-slate-600">
+                <span>Schedule Start:</span>
+                <input
+                  type="date"
+                  value={taskStartDate}
+                  onChange={(e) => setTaskStartDate(e.target.value)}
+                  className="rounded border border-slate-200 bg-white px-2 py-1 text-xs"
+                />
+              </label>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Stage 1: Quotation + Stage 2: PET */}

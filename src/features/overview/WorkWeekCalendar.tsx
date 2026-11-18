@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { AlertTriangle, CheckSquare, ChevronLeft, ChevronRight, ClipboardPaste, Copy, GripVertical, Scissors, Star, X } from 'lucide-react'
 import type { Milestone, Priority, Project, Task, Workstream } from '@/types'
 import { Badge, Button, Card } from '@/components/ui'
@@ -198,6 +199,7 @@ export function WorkWeekCalendar({
   const clampedWeeks = Math.max(4, Math.min(10, weeksToShow))
   const [filterProject, setFilterProject] = usePersistedState<string>('npi.calendar.filterProject', '')
   const [selectedPriorities, setSelectedPriorities] = useState<Priority[]>([])
+  const [filterMilestone, setFilterMilestone] = useState(false)
   const [dragOverCell, setDragOverCell] = useState<string>('')
   const [draggingId, setDraggingId] = useState<string>('')
   const [selectedItem, setSelectedItem] = useState<ItemRef | null>(null)
@@ -230,7 +232,9 @@ export function WorkWeekCalendar({
     setSelectedPriorities((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]))
   }
 
-  const isPriorityDimmed = (p: Priority) => selectedPriorities.length > 0 && !selectedPriorities.includes(p)
+  const hasAnyFilter = selectedPriorities.length > 0 || filterMilestone
+  const isPriorityDimmed = (p: Priority) => hasAnyFilter && !selectedPriorities.includes(p)
+  const isMilestoneDimmed = hasAnyFilter && !filterMilestone
 
   async function handlePriorityBoxClick(p: Priority) {
     if (!selectedItem) {
@@ -402,13 +406,21 @@ export function WorkWeekCalendar({
     }
   }
 
-  // Keyboard shortcuts: Escape closes drawer; Ctrl+C, Ctrl+X on selected item; Ctrl+V on selected day
+  // Keyboard shortcuts: Escape closes drawer or clears selection/clipboard; Ctrl+C, Ctrl+X on selected item; Ctrl+V on selected day
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && drawerOpen) {
-        e.preventDefault()
-        closeDrawer()
-        return
+      if (e.key === 'Escape') {
+        if (drawerOpen) {
+          e.preventDefault()
+          closeDrawer()
+          return
+        }
+        if (selectedItem || clipboard) {
+          e.preventDefault()
+          setSelectedItem(null)
+          setClipboard(null)
+          return
+        }
       }
       const tag = (e.target as HTMLElement | null)?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
@@ -423,8 +435,18 @@ export function WorkWeekCalendar({
         void handlePaste(selectedDay)
       }
     }
+    const onWindowClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null
+      if (!target?.closest('[data-calendar-item], [data-priority-box]')) {
+        setSelectedItem(null)
+      }
+    }
     window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    window.addEventListener('click', onWindowClick)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('click', onWindowClick)
+    }
   })
 
   function onDragStart(e: React.DragEvent, payload: ItemRef) {
@@ -485,8 +507,8 @@ export function WorkWeekCalendar({
   return (
     <Card className="xl:col-span-3">
       {/* Row 1: Title | Row 2: Project filter, Weeks, Month navigation, Date range */}
-      <header className="-mx-4 -mt-4 mb-3 px-4 py-3 border-b border-slate-100 space-y-2">
-        <h2 className="text-sm font-semibold text-slate-800">Workweek Schedule — Tasks & Milestones</h2>
+      <header className="-mx-4 -mt-4 mb-3 px-4 py-3 liquid-card-header space-y-2">
+        <h2 className="text-sm font-semibold text-slate-800 tracking-tight">Workweek Schedule — Tasks & Milestones</h2>
         <div className="flex flex-wrap items-center gap-2">
           <select
             value={filterProject}
@@ -531,6 +553,7 @@ export function WorkWeekCalendar({
               <span key={priority} className="inline-flex items-center gap-1.5">
                 <button
                   type="button"
+                  data-priority-box
                   onClick={() => void handlePriorityBoxClick(priority)}
                   title={
                     selectedItem?.kind === 'task'
@@ -559,22 +582,32 @@ export function WorkWeekCalendar({
               </span>
             )
           })}
-          {selectedPriorities.length > 0 && (
+          <span className="text-slate-300">|</span>
+          <button
+            type="button"
+            onClick={() => setFilterMilestone((v) => !v)}
+            title={`Click to ${filterMilestone ? 'unfilter' : 'filter'} milestones`}
+            className={cn(
+              'inline-flex items-center gap-1.5 cursor-pointer rounded px-1.5 py-0.5 transition-all select-none',
+              filterMilestone && 'bg-purple-700 text-white font-semibold',
+              !filterMilestone && isMilestoneDimmed && 'opacity-40 hover:opacity-80',
+              !filterMilestone && !isMilestoneDimmed && 'hover:bg-slate-100 font-medium text-slate-700',
+            )}
+          >
+            <span className="inline-flex items-center justify-center h-3.5 w-3.5 rounded-sm bg-purple-100 border border-purple-500">
+              <Star className="h-2.5 w-2.5 text-amber-500 fill-amber-400" />
+            </span>
+            Milestone
+          </button>
+          {hasAnyFilter && (
             <button
               type="button"
-              onClick={() => setSelectedPriorities([])}
+              onClick={() => { setSelectedPriorities([]); setFilterMilestone(false) }}
               className="text-[11px] text-primary hover:underline font-medium"
             >
               Show all
             </button>
           )}
-          <span className="text-slate-300">|</span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="inline-flex items-center justify-center h-3.5 w-3.5 rounded-sm bg-purple-100 border border-purple-500">
-              <Star className="h-2.5 w-2.5 text-amber-500 fill-amber-400" />
-            </span>
-            Milestone
-          </span>
         </div>
         <span className="text-slate-500">Single-click to select (Copy/Cut/Priority) · Double-click to edit · Drag & drop to move.</span>
       </div>
@@ -695,6 +728,7 @@ export function WorkWeekCalendar({
                   return (
                     <div
                       key={t.id}
+                      data-calendar-item
                       draggable
                       onDragStart={(e) => onDragStart(e, ref)}
                       onDragEnd={onDragEnd}
@@ -835,6 +869,7 @@ export function WorkWeekCalendar({
                           return (
                             <div
                               key={m.id}
+                              data-calendar-item
                               draggable
                               onDragStart={(e) => onDragStart(e, ref)}
                               onDragEnd={onDragEnd}
@@ -846,6 +881,7 @@ export function WorkWeekCalendar({
                                 isTwoColMatrix ? 'px-1.5 py-1 text-[11px]' : 'px-2 py-1.5 text-xs',
                                 milestoneCardStyle(),
                                 isSelected && 'ring-2 ring-primary',
+                                isMilestoneDimmed && 'opacity-25 saturate-50',
                                 (draggingId === m.id || isCut) && 'opacity-45 border-dashed',
                               )}
                             >
@@ -874,6 +910,7 @@ export function WorkWeekCalendar({
                           return (
                             <div
                               key={t.id}
+                              data-calendar-item
                               draggable
                               onDragStart={(e) => onDragStart(e, ref)}
                               onDragEnd={onDragEnd}
@@ -916,53 +953,59 @@ export function WorkWeekCalendar({
         </div>
       </div>
 
-      {/* Left Slide-Over Edit Panel (slides in from left on double-click, no backdrop blur) */}
-      <aside
-        aria-hidden={!drawerOpen}
-        className={cn(
-          'fixed inset-y-0 left-0 z-50 w-full max-w-md bg-white border-r border-slate-200 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out',
-          drawerOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none',
-        )}
-      >
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 shrink-0">
-          <h3 className="text-base font-semibold text-slate-900">
-            {drawerTarget?.kind === 'milestone' ? 'Edit Milestone' : 'Edit Task'}
-          </h3>
-          <button
-            type="button"
-            onClick={closeDrawer}
-            className="text-slate-400 hover:text-slate-700 p-1 rounded hover:bg-slate-100"
-            title="Close"
-            aria-label="Close edit panel"
+      {/* Portal to document.body so fixed positioning is always anchored to the viewport's left sidebar */}
+      {createPortal(
+        <>
+          <aside
+            aria-hidden={!drawerOpen}
+            className={cn(
+              'fixed inset-y-0 left-0 z-50 w-full max-w-sm liquid-glass-chrome border-r border-slate-200 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out',
+              drawerOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none',
+            )}
           >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="p-5 overflow-y-auto flex-1">
-          {drawerTarget?.kind === 'task' && (
-            <TaskFormBody
-              key={`drawer-task-${drawerTarget.task.id}-${drawerTarget.task.updatedAt}`}
-              task={drawerTarget.task}
-              onClose={closeDrawer}
-            />
+            <div className="flex items-center justify-between h-14 px-4 liquid-card-header shrink-0">
+              <h3 className="text-sm font-semibold text-slate-900">
+                {drawerTarget?.kind === 'milestone' ? 'Edit Milestone' : 'Edit Task'}
+              </h3>
+              <button
+                type="button"
+                onClick={closeDrawer}
+                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-200/60"
+                title="Close"
+                aria-label="Close edit panel"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-3.5 overflow-y-auto flex-1">
+              {drawerTarget?.kind === 'task' && (
+                <TaskFormBody
+                  key={`drawer-task-${drawerTarget.task.id}-${drawerTarget.task.updatedAt}`}
+                  task={drawerTarget.task}
+                  compact
+                  onClose={closeDrawer}
+                />
+              )}
+              {drawerTarget?.kind === 'milestone' && (
+                <MilestoneFormBody
+                  key={`drawer-ms-${drawerTarget.milestone.id}-${drawerTarget.milestone.updatedAt}`}
+                  milestone={drawerTarget.milestone}
+                  compact
+                  onClose={closeDrawer}
+                />
+              )}
+            </div>
+          </aside>
+          {toast && (
+            <div
+              role="status"
+              className="fixed top-16 left-1/2 -translate-x-1/2 z-50 rounded-full border border-emerald-300 bg-emerald-50 px-4 py-1.5 text-xs font-semibold text-emerald-900 shadow-lg"
+            >
+              {toast}
+            </div>
           )}
-          {drawerTarget?.kind === 'milestone' && (
-            <MilestoneFormBody
-              key={`drawer-ms-${drawerTarget.milestone.id}-${drawerTarget.milestone.updatedAt}`}
-              milestone={drawerTarget.milestone}
-              onClose={closeDrawer}
-            />
-          )}
-        </div>
-      </aside>
-      {/* Temporary floating pop-up toast (centered above calendar) */}
-      {toast && (
-        <div
-          role="status"
-          className="fixed top-16 left-1/2 -translate-x-1/2 z-50 rounded-md border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-900 shadow-lg"
-        >
-          {toast}
-        </div>
+        </>,
+        document.body,
       )}
     </Card>
   )

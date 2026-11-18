@@ -6,10 +6,10 @@ import { cn } from '@/utils/helpers'
 // ---------- Button ----------
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger'
 const variants: Record<Variant, string> = {
-  primary: 'bg-primary text-white hover:bg-primary-hover',
-  secondary: 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50',
-  ghost: 'text-slate-600 hover:bg-slate-100',
-  danger: 'bg-red-600 text-white hover:bg-red-700',
+  primary: 'bg-primary text-white hover:bg-primary-hover shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_2px_6px_rgba(37,99,235,0.25)]',
+  secondary: 'liquid-glass-pill text-slate-700 hover:bg-white/95',
+  ghost: 'text-slate-600 hover:bg-slate-200/50',
+  danger: 'bg-red-600 text-white hover:bg-red-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_2px_6px_rgba(220,38,38,0.25)]',
 }
 export function Button({ variant = 'secondary', size = 'md', className, ...props }:
   ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: 'sm' | 'md' }) {
@@ -17,8 +17,8 @@ export function Button({ variant = 'secondary', size = 'md', className, ...props
     <button
       {...props}
       className={cn(
-        'inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none',
-        size === 'sm' ? 'h-8 px-2.5 text-xs' : 'h-9 px-3.5 text-sm',
+        'inline-flex items-center justify-center gap-1.5 rounded-xl font-medium transition-all duration-150 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none',
+        size === 'sm' ? 'h-8 px-3 text-xs' : 'h-9 px-3.5 text-sm',
         variants[variant], className,
       )}
     />
@@ -54,10 +54,10 @@ export function ProgressBar({ value }: { value: number }) {
 // ---------- Card ----------
 export function Card({ title, action, children, className }: { title?: string; action?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <section className={cn('rounded-lg border border-slate-200 bg-white shadow-sm', className)}>
+    <section className={cn('rounded-2xl liquid-glass overflow-hidden', className)}>
       {title && (
-        <header className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-          <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
+        <header className="flex items-center justify-between px-4 py-3 liquid-card-header">
+          <h2 className="text-sm font-semibold text-slate-800 tracking-tight">{title}</h2>
           {action}
         </header>
       )}
@@ -86,7 +86,7 @@ export function Loading() {
 }
 
 // ---------- Form fields ----------
-const inputCls = 'w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary'
+const inputCls = 'w-full rounded-xl border border-slate-200/90 bg-white/85 px-3 py-2 text-sm shadow-[inset_0_1px_2px_rgba(15,23,42,0.03)] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-shadow'
 export function Field({ label, children, required }: { label: string; children: ReactNode; required?: boolean }) {
   return (
     <label className="block">
@@ -113,14 +113,14 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
   return (
     <Dialog.Root open={open} onOpenChange={(o) => !o && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-slate-900/40 z-40" />
+        <Dialog.Overlay className="fixed inset-0 bg-slate-900/30 z-40" />
         <Dialog.Content
           aria-describedby={undefined}
-          className={cn('fixed z-50 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[94vw] max-h-[90vh] overflow-y-auto rounded-lg bg-white shadow-xl', wide ? 'max-w-3xl' : 'max-w-md')}
+          className={cn('fixed z-50 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[94vw] max-h-[90vh] overflow-y-auto rounded-2xl liquid-glass', wide ? 'max-w-3xl' : 'max-w-md')}
         >
-          <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 sticky top-0 bg-white">
-            <Dialog.Title className="text-base font-semibold">{title}</Dialog.Title>
-            <Dialog.Close className="p-1 rounded hover:bg-slate-100" aria-label="Close"><X className="h-4 w-4" /></Dialog.Close>
+          <div className="flex items-center justify-between px-5 py-3.5 liquid-card-header sticky top-0 z-10">
+            <Dialog.Title className="text-base font-semibold tracking-tight text-slate-900">{title}</Dialog.Title>
+            <Dialog.Close className="p-1 rounded-lg hover:bg-slate-200/60" aria-label="Close"><X className="h-4 w-4" /></Dialog.Close>
           </div>
           <div className="p-5">{children}</div>
         </Dialog.Content>

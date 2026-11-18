@@ -13,7 +13,7 @@ export function MilestoneForm({ open, milestone, defaultProjectId, onClose }: { 
   )
 }
 
-export function MilestoneFormBody({ milestone, defaultProjectId, onClose }: { milestone?: Milestone; defaultProjectId?: string; onClose: () => void }) {
+export function MilestoneFormBody({ milestone, defaultProjectId, compact = false, onClose }: { milestone?: Milestone; defaultProjectId?: string; compact?: boolean; onClose: () => void }) {
   const projects = useTable<Project>('projects') ?? []
   const [form, setForm] = useState<MilestoneInput>(milestone ? { ...milestone, workstreamId: '' } : emptyMilestone(defaultProjectId))
   const [error, setError] = useState('')
@@ -33,7 +33,7 @@ export function MilestoneFormBody({ milestone, defaultProjectId, onClose }: { mi
   }
 
   return (
-    <form onSubmit={submit} className="space-y-3">
+    <form onSubmit={submit} className={compact ? 'space-y-2.5' : 'space-y-3'}>
       <FormError message={error} />
       <Field label="Milestone Name" required>
         <Input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Tape Out Date, Drawing Approval Cut-off" />
@@ -45,12 +45,12 @@ export function MilestoneFormBody({ milestone, defaultProjectId, onClose }: { mi
           options={[{ value: '', label: 'Select project…' }, ...projects.map((p) => ({ value: p.id, label: `${p.code}${p.deviceName ? ` – ${p.deviceName}` : ''}` }))]}
         />
       </Field>
-      <Field label="Description"><Textarea value={form.description} onChange={(e) => set('description', e.target.value)} /></Field>
-      <div className="grid grid-cols-2 gap-3">
+      <Field label="Description"><Textarea rows={compact ? 2 : 3} value={form.description} onChange={(e) => set('description', e.target.value)} /></Field>
+      <div className="grid grid-cols-2 gap-2.5">
         <Field label="Target Date" required><Input type="date" value={form.targetDate} onChange={(e) => set('targetDate', e.target.value)} /></Field>
         <Field label="Actual Completion Date"><Input type="date" value={form.actualDate} onChange={(e) => set('actualDate', e.target.value)} /></Field>
       </div>
-      <Field label="Remarks"><Textarea value={form.remarks} onChange={(e) => set('remarks', e.target.value)} /></Field>
+      <Field label="Remarks"><Textarea rows={compact ? 2 : 3} value={form.remarks} onChange={(e) => set('remarks', e.target.value)} /></Field>
       <div className="flex justify-end gap-2">
         <Button type="button" onClick={onClose}>Cancel</Button>
         <Button type="submit" variant="primary">Save Milestone</Button>
