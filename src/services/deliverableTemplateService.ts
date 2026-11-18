@@ -6,6 +6,7 @@ import { logActivity } from './activityService'
 export interface DeliverableSubTaskTemplate {
   id: string
   name: string
+  kind?: 'task' | 'milestone'
   workingDays: number
   dependsOnId: string // '' = none, otherwise id of predecessor sub-task in same deliverable
   priority: Priority
@@ -161,7 +162,7 @@ export function computeTemplateSchedule(
     if (cached) return cached
     if (visiting.has(sub.id)) {
       // Cycle guard: fallback to baseStart
-      const dur = Math.max(1, Math.round(sub.workingDays || 1))
+      const dur = sub.kind === 'milestone' ? 1 : Math.max(1, Math.round(sub.workingDays || 1))
       const res: ScheduledSubTask = {
         subTask: sub,
         startOffsetDays: 0,
@@ -173,7 +174,7 @@ export function computeTemplateSchedule(
       return res
     }
     visiting.add(sub.id)
-    const dur = Math.max(1, Math.round(sub.workingDays || 1))
+    const dur = sub.kind === 'milestone' ? 1 : Math.max(1, Math.round(sub.workingDays || 1))
     const dep = sub.dependsOnId ? byId.get(sub.dependsOnId) : undefined
     let startOffset = 0
     let startDate = baseStart
@@ -225,36 +226,52 @@ export async function createTasksFromDeliverableTemplate(opts: {
   const templateToTaskId = new Map<string, string>()
   for (const item of schedule) templateToTaskId.set(item.subTask.id, newId())
 
-  await db.transaction('rw', [db.tasks, db.activityLogs], async () => {
+  await db.transaction('rw', [db.tasks, db.milestones, db.activityLogs], async () => {
     for (const item of schedule) {
       const id = templateToTaskId.get(item.subTask.id)!
-      const dependsOnTaskId = item.subTask.dependsOnId ? templateToTaskId.get(item.subTask.dependsOnId) ?? '' : ''
-      await db.tasks.add({
-        id,
-        projectId: opts.projectId,
-        workstreamId: opts.workstreamId,
-        name: item.subTask.name,
-        assignee: '',
-        supplierId: opts.supplierId || '',
-        startDate: item.startDate,
-        dueDate: item.dueDate,
-        completionDate: '',
-        priority: item.subTask.priority,
-        status: 'Not Started',
-        progress: 0,
-        workingDays: item.subTask.workingDays,
-        dependsOnTaskId,
-        remarks: '',
-        createdAt: now,
-        updatedAt: now,
-      })
+      if (item.subTask.kind === 'milestone') {
+        await db.milestones.add({
+          id,
+          projectId: opts.projectId,
+          workstreamId: opts.workstreamId,
+          name: item.subTask.name,
+          description: '',
+          targetDate: item.dueDate,
+          actualDate: '',
+          status: 'Not Started',
+          remarks: '',
+          createdAt: now,
+          updatedAt: now,
+        })
+      } else {
+        const dependsOnTaskId = item.subTask.dependsOnId ? templateToTaskId.get(item.subTask.dependsOnId) ?? '' : ''
+        await db.tasks.add({
+          id,
+          projectId: opts.projectId,
+          workstreamId: opts.workstreamId,
+          name: item.subTask.name,
+          assignee: '',
+          supplierId: opts.supplierId || '',
+          startDate: item.startDate,
+          dueDate: item.dueDate,
+          completionDate: '',
+          priority: item.subTask.priority,
+          status: 'Not Started',
+          progress: 0,
+          workingDays: item.subTask.workingDays,
+          dependsOnTaskId,
+          remarks: '',
+          createdAt: now,
+          updatedAt: now,
+        })
+      }
     }
     await logActivity(
       'Task',
       opts.workstreamId,
       opts.projectId,
       'Created',
-      `Auto-created ${schedule.length} sub-tasks for deliverable "${opts.categoryOrName}"`,
+      `Auto-created ${schedule.length} items for deliverable "${opts.categoryOrName}"`,
     )
   })
   return schedule.length

@@ -38,8 +38,8 @@ export function TopBar() {
   const go = (to: string) => { setQuery(''); setQuickOpen(false); navigate(to) }
 
   return (
-    <div className="sticky top-0 z-20 px-3 sm:px-4 pt-3">
-      <header className="flex h-12 items-center gap-3 rounded-full liquid-glass shadow-md px-4 sm:px-5 max-w-[1440px] mx-auto">
+    <div className="sticky top-0 z-20 pt-3 w-full">
+      <header className="flex h-12 w-full items-center gap-3 rounded-full liquid-glass shadow-md px-4 sm:px-5">
         <div className="min-w-0 flex items-center gap-2.5">
           <h1 className="text-sm font-bold text-slate-900 leading-none truncate">
             {isDetail ? projectName ?? 'Project' : section.label}

@@ -25,6 +25,7 @@ import { TabSaveControls } from '@/components/TabSaveControls'
 import { ProjectForm } from '@/features/projects/ProjectForm'
 import { WorkstreamForm } from '@/features/projects/WorkstreamForm'
 import { DeliverableTasksModal } from '@/features/projects/DeliverableTasksModal'
+import { TaskForm } from '@/features/tasks/TaskForm'
 import {
   CommercialBadge,
   buildDeliverableCommercialRows,
@@ -71,6 +72,9 @@ export function ProjectsPage() {
   const [wsEditing, setWsEditing] = useState<Workstream | undefined>()
   const [wsDeleting, setWsDeleting] = useState<Workstream | undefined>()
   const [wsTasksTarget, setWsTasksTarget] = useState<Workstream | undefined>()
+  const [taskOpen, setTaskOpen] = useState(false)
+  const [taskProjectId, setTaskProjectId] = useState('')
+  const [taskWorkstreamId, setTaskWorkstreamId] = useState('')
 
   const [error, setError] = useState('')
 
@@ -175,6 +179,15 @@ export function ProjectsPage() {
         <Select className="!w-36" value={hwType} onChange={(e) => setHwType(e.target.value)} options={[{ value: '', label: 'All HW types' }, ...HW_TYPES]} />
         <Select className="!w-40" value={status} onChange={(e) => setStatus(e.target.value)} options={[{ value: '', label: 'All statuses' }, ...ACTIVE_PROJECT_STATUSES]} />
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          <Button
+            onClick={() => {
+              setTaskProjectId('')
+              setTaskWorkstreamId('')
+              setTaskOpen(true)
+            }}
+          >
+            <Plus className="h-4 w-4" /> Add Task
+          </Button>
           <Button onClick={() => { setEditing(undefined); setFormOpen(true) }}>
             <Plus className="h-4 w-4" /> Create Project
           </Button>
@@ -231,6 +244,11 @@ export function ProjectsPage() {
                       onEditDeliverable={(w) => { setWsProjectId(p.id); setWsEditing(w); setWsOpen(true) }}
                       onDeleteDeliverable={(w) => setWsDeleting(w)}
                       onOpenDeliverableTasks={(w) => setWsTasksTarget(w)}
+                      onAddTask={(w) => {
+                        setTaskProjectId(p.id)
+                        setTaskWorkstreamId(w?.id ?? '')
+                        setTaskOpen(true)
+                      }}
                       onError={(msg) => setError(msg)}
                     />
                   )
@@ -248,6 +266,12 @@ export function ProjectsPage() {
         workstream={wsTasksTarget}
         project={projects.find((p) => p.id === wsTasksTarget?.projectId)}
         onClose={() => setWsTasksTarget(undefined)}
+      />
+      <TaskForm
+        open={taskOpen}
+        defaultProjectId={taskProjectId || undefined}
+        defaultWorkstreamId={taskWorkstreamId || undefined}
+        onClose={() => setTaskOpen(false)}
       />
 
       <ConfirmDialog
@@ -513,6 +537,7 @@ function ProjectWithDeliverablesGroup({
   onEditDeliverable,
   onDeleteDeliverable,
   onOpenDeliverableTasks,
+  onAddTask,
   onError,
 }: {
   project: Project
@@ -529,6 +554,7 @@ function ProjectWithDeliverablesGroup({
   onEditDeliverable: (w: Workstream) => void
   onDeleteDeliverable: (w: Workstream) => void
   onOpenDeliverableTasks: (w: Workstream) => void
+  onAddTask: (w?: Workstream) => void
   onError: (msg: string) => void
 }) {
   return (
@@ -567,9 +593,14 @@ function ProjectWithDeliverablesGroup({
         </td>
         <td className="px-3 whitespace-nowrap text-xs">{formatDate(p.baselineDate)}</td>
         <td className="px-3 text-xs text-slate-500" onClick={(e) => e.stopPropagation()}>
-          <Button size="sm" variant="ghost" className="!py-1 !px-2 text-xs text-primary" onClick={onAddDeliverable}>
-            <Plus className="h-3 w-3" /> Add Deliverable
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button size="sm" variant="ghost" className="!py-1 !px-2 text-xs text-primary" onClick={onAddDeliverable}>
+              <Plus className="h-3 w-3" /> Add Deliverable
+            </Button>
+            <Button size="sm" variant="ghost" className="!py-1 !px-2 text-xs text-primary" onClick={() => onAddTask()}>
+              <Plus className="h-3 w-3" /> Add Task
+            </Button>
+          </div>
         </td>
         <td className="px-3" onClick={(e) => e.stopPropagation()}>
           <div className="flex gap-1">

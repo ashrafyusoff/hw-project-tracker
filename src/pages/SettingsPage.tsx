@@ -245,37 +245,47 @@ export function SettingsPage() {
   const completedNotesCount = quickNotes.filter((n) => n.done).length
 
   return (
-    <div className="space-y-5 max-w-4xl">
-      <div className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-        <AlertTriangle className="h-5 w-5 shrink-0" />
+    <div className="space-y-3 w-full">
+      <div className="flex items-center gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-900">
+        <AlertTriangle className="h-4 w-4 shrink-0" />
         <p>Your data is stored locally in this browser. It is not automatically synchronised across different devices or browsers. Export regular backups to prevent data loss.</p>
       </div>
-      {msg && <p className={`rounded-md px-3 py-2 text-sm ${msg.type === 'ok' ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}`}>{msg.text}</p>}
+      {msg && <p className={`rounded-xl px-3.5 py-2 text-xs font-medium ${msg.type === 'ok' ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}`}>{msg.text}</p>}
 
-      <Card title="Appearance (Dark / Light Mode)">
-        <p className="text-sm text-slate-500 mb-3">Choose between Light Mode and Dark Mode across HW Tracker.</p>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant={theme === 'light' ? 'primary' : 'secondary'}
-            onClick={() => setTheme('light')}
-          >
-            <Sun className="h-4 w-4" /> Light Mode {theme === 'light' && <Check className="h-3.5 w-3.5 ml-0.5" />}
-          </Button>
-          <Button
-            variant={theme === 'dark' ? 'primary' : 'secondary'}
-            onClick={() => setTheme('dark')}
-          >
-            <Moon className="h-4 w-4" /> Dark Mode {theme === 'dark' && <Check className="h-3.5 w-3.5 ml-0.5" />}
-          </Button>
-        </div>
-      </Card>
+      {/* Row 1: Appearance (left) + JSON Backup & Sample Data (right) */}
+      <div className="grid lg:grid-cols-2 gap-3">
+        <Card title="Appearance (Dark / Light Mode)">
+          <p className="text-xs text-slate-500 mb-2.5">Choose between Light Mode and Dark Mode across HW Tracker.</p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant={theme === 'light' ? 'primary' : 'secondary'}
+              onClick={() => setTheme('light')}
+            >
+              <Sun className="h-4 w-4" /> Light Mode {theme === 'light' && <Check className="h-3.5 w-3.5 ml-0.5" />}
+            </Button>
+            <Button
+              variant={theme === 'dark' ? 'primary' : 'secondary'}
+              onClick={() => setTheme('dark')}
+            >
+              <Moon className="h-4 w-4" /> Dark Mode {theme === 'dark' && <Check className="h-3.5 w-3.5 ml-0.5" />}
+            </Button>
+          </div>
+        </Card>
 
+        <Card title="JSON Backup">
+          <p className="text-xs text-slate-500 mb-2.5">Save all your data to one file, or restore from a previous backup. Restoring replaces everything currently stored.</p>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="primary" onClick={() => act(exportJsonBackup, 'Backup file downloaded.')}><Download className="h-4 w-4" /> Export JSON Backup</Button>
+            <Button onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4" /> Restore JSON Backup</Button>
+            <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={onFile} />
+          </div>
+        </Card>
+      </div>
+
+      {/* Row 2: Workspace & View Preferences */}
       <Card title="Workspace & View Preferences" action={<Sliders className="h-4 w-4 text-slate-400" />}>
-        <p className="text-sm text-slate-500 mb-3">
-          Customize your default dashboard layout, workweek calendar span, and saved filter/collapse states across all tabs.
-        </p>
-        <div className="grid sm:grid-cols-3 gap-3 mb-4">
-          <div className="rounded-md border border-slate-200 bg-slate-50/70 p-3">
+        <div className="grid sm:grid-cols-3 gap-2.5 mb-2.5">
+          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-2.5">
             <label className="block text-xs font-semibold text-slate-600 mb-1.5">
               Workweek Schedule Span (Weeks)
             </label>
@@ -288,7 +298,7 @@ export function SettingsPage() {
                     setWeeksToShow(w)
                     setMsg({ type: 'ok', text: `Workweek Schedule set to display ${w} weeks.` })
                   }}
-                  className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
+                  className={`px-2 py-1 rounded-lg text-xs font-medium border transition-colors ${
                     weeksToShow === w
                       ? 'bg-primary text-white border-primary'
                       : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
@@ -303,12 +313,12 @@ export function SettingsPage() {
                 max={10}
                 value={weeksToShow}
                 onChange={(e) => setWeeksToShow(Math.max(1, Math.min(10, Number(e.target.value) || 4)))}
-                className="w-12 h-7 rounded border border-slate-200 bg-white px-1.5 text-center text-xs font-semibold text-slate-800"
+                className="w-11 h-7 rounded-lg border border-slate-200 bg-white px-1.5 text-center text-xs font-semibold text-slate-800"
               />
             </div>
           </div>
 
-          <div className="rounded-md border border-slate-200 bg-slate-50/70 p-3">
+          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-2.5">
             <label className="block text-xs font-semibold text-slate-600 mb-1.5">
               This Week Activities Sort Mode
             </label>
@@ -319,7 +329,7 @@ export function SettingsPage() {
                   setThisWeekSortBy('priority')
                   setMsg({ type: 'ok', text: 'This Week Activities default sort set to Priority.' })
                 }}
-                className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${
                   thisWeekSortBy === 'priority'
                     ? 'bg-primary text-white border-primary'
                     : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
@@ -333,7 +343,7 @@ export function SettingsPage() {
                   setThisWeekSortBy('due')
                   setMsg({ type: 'ok', text: 'This Week Activities default sort set to Due Date.' })
                 }}
-                className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${
                   thisWeekSortBy === 'due'
                     ? 'bg-primary text-white border-primary'
                     : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
@@ -344,7 +354,7 @@ export function SettingsPage() {
             </div>
           </div>
 
-          <div className="rounded-md border border-slate-200 bg-slate-50/70 p-3">
+          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-2.5">
             <label className="block text-xs font-semibold text-slate-600 mb-1.5">
               Overview Radar / Pinboard Default
             </label>
@@ -355,7 +365,7 @@ export function SettingsPage() {
                   setLeftWidgetTab('radar')
                   setMsg({ type: 'ok', text: 'Overview left widget set to Hardware Delivery Radar.' })
                 }}
-                className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${
                   leftWidgetTab === 'radar'
                     ? 'bg-primary text-white border-primary'
                     : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
@@ -369,7 +379,7 @@ export function SettingsPage() {
                   setLeftWidgetTab('notes')
                   setMsg({ type: 'ok', text: 'Overview left widget set to Quick Pinboard.' })
                 }}
-                className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${
                   leftWidgetTab === 'notes'
                     ? 'bg-primary text-white border-primary'
                     : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
@@ -394,130 +404,131 @@ export function SettingsPage() {
         </div>
       </Card>
 
-      <Card title="JSON Backup">
-        <p className="text-sm text-slate-500 mb-3">Save all your data to one file, or restore from a previous backup. Restoring replaces everything currently stored.</p>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="primary" onClick={() => act(exportJsonBackup, 'Backup file downloaded.')}><Download className="h-4 w-4" /> Export JSON Backup</Button>
-          <Button onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4" /> Restore JSON Backup</Button>
-          <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={onFile} />
-        </div>
-      </Card>
+      {/* Row 3: Excel Reports (left) + Activity History & Quick Pinboard (right) */}
+      <div className="grid lg:grid-cols-2 gap-3">
+        <Card title="Excel Reports">
+          <p className="text-xs text-slate-500 mb-2.5">Download individual Excel worksheets or the full master workbook.</p>
+          <div className="flex flex-wrap gap-1.5">
+            {REPORT_NAMES.map((n) => <Button key={n} onClick={() => act(() => exportReport(n), `${n} report downloaded.`)}><FileSpreadsheet className="h-3.5 w-3.5" /> {n}</Button>)}
+            <Button variant="primary" onClick={() => act(exportAllReports, 'Full report downloaded.')}><FileSpreadsheet className="h-3.5 w-3.5" /> All reports (one workbook)</Button>
+          </div>
+        </Card>
 
-      <Card title="Excel Reports">
-        <div className="flex flex-wrap gap-2">
-          {REPORT_NAMES.map((n) => <Button key={n} onClick={() => act(() => exportReport(n), `${n} report downloaded.`)}><FileSpreadsheet className="h-4 w-4" /> {n}</Button>)}
-          <Button variant="primary" onClick={() => act(exportAllReports, 'Full report downloaded.')}><FileSpreadsheet className="h-4 w-4" /> All reports (one workbook)</Button>
-        </div>
-      </Card>
+        <Card title="Activity History & Quick Pinboard" action={<Activity className="h-4 w-4 text-slate-400" />}>
+          <p className="text-xs text-slate-500 mb-2.5">
+            Audit logs ({status.counts.activityLogs} entries) and Quick Pinboard notes ({quickNotes.length} total, {completedNotesCount} completed).
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            <Button
+              onClick={() => act(handleExportActivityCsv, 'Activity log CSV downloaded.')}
+              disabled={status.counts.activityLogs === 0}
+            >
+              <Download className="h-3.5 w-3.5" /> Export Activity (CSV)
+            </Button>
+            <Button
+              onClick={() => {
+                setQuickNotes((prev) => prev.filter((n) => !n.done))
+                setMsg({ type: 'ok', text: 'Completed Pinboard notes cleared.' })
+              }}
+              disabled={completedNotesCount === 0}
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Clear Pinboard ({completedNotesCount})
+            </Button>
+            <Button
+              onClick={() => setConfirmClearLogs(true)}
+              disabled={status.counts.activityLogs === 0}
+            >
+              <Trash2 className="h-3.5 w-3.5 text-red-500" /> Clear Logs ({status.counts.activityLogs})
+            </Button>
+          </div>
+        </Card>
+      </div>
 
-      <Card title="Activity History & Quick Pinboard Management" action={<Activity className="h-4 w-4 text-slate-400" />}>
-        <p className="text-sm text-slate-500 mb-3">
-          Export or prune audit activity history logs ({status.counts.activityLogs} entries) and manage Quick Pinboard notes ({quickNotes.length} total, {completedNotesCount} completed).
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            onClick={() => act(handleExportActivityCsv, 'Activity log CSV downloaded.')}
-            disabled={status.counts.activityLogs === 0}
-          >
-            <Download className="h-4 w-4" /> Export Activity History (CSV)
-          </Button>
-          <Button
-            onClick={() => {
-              setQuickNotes((prev) => prev.filter((n) => !n.done))
-              setMsg({ type: 'ok', text: 'Completed Pinboard notes cleared.' })
-            }}
-            disabled={completedNotesCount === 0}
-          >
-            <Trash2 className="h-4 w-4" /> Clear Completed Pinboard Notes ({completedNotesCount})
-          </Button>
-          <Button
-            onClick={() => setConfirmClearLogs(true)}
-            disabled={status.counts.activityLogs === 0}
-          >
-            <Trash2 className="h-4 w-4 text-red-500" /> Clear Activity History Logs ({status.counts.activityLogs})
-          </Button>
-        </div>
-      </Card>
-
-      <Card title="Workspace Health & Data Integrity" action={<ShieldCheck className="h-4 w-4 text-emerald-600" />}>
-        <p className="text-sm text-slate-500 mb-3">
-          Live diagnostic check of active NPI schedules, deliverable commercial readiness, and relational link integrity.
-        </p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mb-3 text-xs">
-          <div className="flex items-center justify-between rounded border border-slate-200 bg-slate-50/70 px-3 py-2">
-            <span className="text-slate-600">Projects Missing HW Required</span>
-            <Badge color={status.health.missingBaselineCount > 0 ? 'amber' : 'green'}>
-              {status.health.missingBaselineCount}
-            </Badge>
+      {/* Row 4: Workspace Health & Data Integrity (left) + Database Status (right) */}
+      <div className="grid lg:grid-cols-2 gap-3">
+        <Card title="Workspace Health & Data Integrity" action={<ShieldCheck className="h-4 w-4 text-emerald-600" />}>
+          <div className="grid grid-cols-2 gap-2 mb-2.5 text-xs">
+            <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-1.5">
+              <span className="text-slate-600">Missing HW Required</span>
+              <Badge color={status.health.missingBaselineCount > 0 ? 'amber' : 'green'}>
+                {status.health.missingBaselineCount}
+              </Badge>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-1.5">
+              <span className="text-slate-600">Missing Supplier</span>
+              <Badge color={status.health.unassignedSupplierDeliverables > 0 ? 'amber' : 'green'}>
+                {status.health.unassignedSupplierDeliverables}
+              </Badge>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-1.5">
+              <span className="text-slate-600">Pending PO #</span>
+              <Badge color={status.health.pendingPoDeliverables > 0 ? 'blue' : 'green'}>
+                {status.health.pendingPoDeliverables}
+              </Badge>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-1.5">
+              <span className="text-slate-600">Overdue Tasks</span>
+              <Badge color={status.health.overdueOpenTasks > 0 ? 'red' : 'green'}>
+                {status.health.overdueOpenTasks}
+              </Badge>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-1.5">
+              <span className="text-slate-600">Overdue Milestones</span>
+              <Badge color={status.health.overdueMilestones > 0 ? 'red' : 'green'}>
+                {status.health.overdueMilestones}
+              </Badge>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-1.5">
+              <span className="text-slate-600">Orphaned Links</span>
+              <Badge color={status.health.orphanLinksCount > 0 ? 'amber' : 'green'}>
+                {status.health.orphanLinksCount}
+              </Badge>
+            </div>
           </div>
-          <div className="flex items-center justify-between rounded border border-slate-200 bg-slate-50/70 px-3 py-2">
-            <span className="text-slate-600">Deliverables Missing Supplier</span>
-            <Badge color={status.health.unassignedSupplierDeliverables > 0 ? 'amber' : 'green'}>
-              {status.health.unassignedSupplierDeliverables}
-            </Badge>
-          </div>
-          <div className="flex items-center justify-between rounded border border-slate-200 bg-slate-50/70 px-3 py-2">
-            <span className="text-slate-600">Deliverables Pending PO #</span>
-            <Badge color={status.health.pendingPoDeliverables > 0 ? 'blue' : 'green'}>
-              {status.health.pendingPoDeliverables}
-            </Badge>
-          </div>
-          <div className="flex items-center justify-between rounded border border-slate-200 bg-slate-50/70 px-3 py-2">
-            <span className="text-slate-600">Overdue Open Tasks</span>
-            <Badge color={status.health.overdueOpenTasks > 0 ? 'red' : 'green'}>
-              {status.health.overdueOpenTasks}
-            </Badge>
-          </div>
-          <div className="flex items-center justify-between rounded border border-slate-200 bg-slate-50/70 px-3 py-2">
-            <span className="text-slate-600">Overdue Open Milestones</span>
-            <Badge color={status.health.overdueMilestones > 0 ? 'red' : 'green'}>
-              {status.health.overdueMilestones}
-            </Badge>
-          </div>
-          <div className="flex items-center justify-between rounded border border-slate-200 bg-slate-50/70 px-3 py-2">
-            <span className="text-slate-600">Orphaned Relational Links</span>
-            <Badge color={status.health.orphanLinksCount > 0 ? 'amber' : 'green'}>
-              {status.health.orphanLinksCount}
-            </Badge>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
           <Button
             onClick={() => act(handleCleanOrphanLinks, 'Database relational links verified and cleaned.')}
             disabled={status.health.orphanLinksCount === 0}
           >
-            <ShieldCheck className="h-4 w-4" /> Clean Up Orphaned Links ({status.health.orphanLinksCount})
+            <ShieldCheck className="h-3.5 w-3.5" /> Clean Up Orphaned Links ({status.health.orphanLinksCount})
           </Button>
-        </div>
-      </Card>
+        </Card>
 
-      <Card title="Sample Data & Reset">
-        <div className="flex flex-wrap gap-2">
-          <Button variant="primary" onClick={() => act(loadSampleData, 'Sample data loaded.')}>
-            {status.sample ? 'Reload Sample Data' : 'Load Sample Data'}
-          </Button>
-          <Button onClick={() => setConfirmClear(true)} disabled={!status.sample}>Clear Sample Data</Button>
-          <Button variant="danger" onClick={() => setConfirmReset(true)}><RotateCcw className="h-4 w-4" /> Reset Application Data</Button>
-        </div>
-        <p className="text-xs text-slate-400 mt-2">
-          Load / Reload Sample Data populates complete NPI & Non-NPI demo records across all tabs. Clear Sample Data removes only the demo records while keeping your own records.
-        </p>
-      </Card>
+        <Card title="Database Status" action={<Database className="h-4 w-4 text-slate-400" />}>
+          <p className="text-xs text-slate-600 mb-2">
+            IndexedDB <b>{status.dbName}</b> is <b className={status.open ? 'text-emerald-600' : 'text-red-600'}>{status.open ? 'open' : 'closed'}</b> · {status.total} records · storage: {mb(status.storage.usage)}
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-xs">
+            {VISIBLE_TABLES.map((n) => (
+              <div key={n} className="flex justify-between border-b border-slate-100 py-1">
+                <span className="text-slate-500">{LABELS[n]}</span>
+                <span className="font-semibold">{status.counts[n as keyof typeof status.counts]}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
 
-      <Card title="Database Status" action={<Database className="h-4 w-4 text-slate-400" />}>
-        <p className="text-sm text-slate-600 mb-3">
-          IndexedDB database <b>{status.dbName}</b> is <b className={status.open ? 'text-emerald-600' : 'text-red-600'}>{status.open ? 'open' : 'closed'}</b> · {status.total} records · browser storage used: {mb(status.storage.usage)}
-        </p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-1 text-sm">
-          {VISIBLE_TABLES.map((n) => <div key={n} className="flex justify-between border-b border-slate-100 py-1"><span className="text-slate-500">{LABELS[n]}</span><span className="font-medium">{status.counts[n as keyof typeof status.counts]}</span></div>)}
-        </div>
-      </Card>
+      {/* Row 5: Sample Data & Reset (left) + About (right) */}
+      <div className="grid lg:grid-cols-2 gap-3">
+        <Card title="Sample Data & Reset">
+          <div className="flex flex-wrap gap-2">
+            <Button variant="primary" onClick={() => act(loadSampleData, 'Sample data loaded.')}>
+              {status.sample ? 'Reload Sample Data' : 'Load Sample Data'}
+            </Button>
+            <Button onClick={() => setConfirmClear(true)} disabled={!status.sample}>Clear Sample Data</Button>
+            <Button variant="danger" onClick={() => setConfirmReset(true)}><RotateCcw className="h-3.5 w-3.5" /> Reset Application Data</Button>
+          </div>
+          <p className="text-[11px] text-slate-400 mt-2">
+            Populates or clears demo records across all tabs while keeping your own records untouched.
+          </p>
+        </Card>
 
-      <Card title="About">
-        <p className="text-sm text-slate-600">
-          <b>HW Tracker</b> — Hardware Project Management Application · Website by <b className="text-primary">Pacca</b>
-        </p>
-      </Card>
+        <Card title="About">
+          <p className="text-xs text-slate-600">
+            <b>HW Tracker</b> — Hardware Project Management Application · Website by <b className="text-primary">Pacca</b>
+          </p>
+        </Card>
+      </div>
 
       <ConfirmDialog open={!!pending} title="Replace all data?" confirmLabel="Restore backup" onCancel={() => setPending(undefined)}
         onConfirm={async () => { const b = pending!; setPending(undefined); await act(() => restoreBackup(b), 'Backup restored.') }}

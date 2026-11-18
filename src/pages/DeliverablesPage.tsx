@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Calendar, Check, GripVertical, Layers, Plus, RotateCcw, Save, Trash2 } from 'lucide-react'
+import { Calendar, Check, CheckSquare, GripVertical, Layers, Plus, RotateCcw, Save, Star, Trash2 } from 'lucide-react'
 import { PRIORITIES, type Priority } from '@/types'
 import { Badge, Button, Card, EmptyState, Input, Modal } from '@/components/ui'
 import {
@@ -389,7 +389,8 @@ export function DeliverablesPage() {
                     <thead className="text-[11px] text-slate-500 bg-slate-50 border-y border-slate-200">
                       <tr>
                         <th className="px-2 py-2 text-center font-semibold w-20">Order</th>
-                        <th className="px-2 py-2 text-left font-semibold">Task Name</th>
+                        <th className="px-2 py-2 text-left font-semibold w-28">Type</th>
+                        <th className="px-2 py-2 text-left font-semibold">Name</th>
                         <th className="px-2 py-2 text-left font-semibold w-28">Working Days</th>
                         <th className="px-2 py-2 text-left font-semibold">Depends On (Predecessor)</th>
                         <th className="px-2 py-2 text-left font-semibold w-28">Priority</th>
@@ -434,6 +435,39 @@ export function DeliverablesPage() {
                                 <span className="w-5 text-center font-semibold text-slate-400">{idx + 1}</span>
                               </div>
                             </td>
+                            <td className="px-2 py-1.5 whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const nextKind = sub.kind === 'milestone' ? 'task' : 'milestone'
+                                  updateSubTask(
+                                    sub.id,
+                                    nextKind === 'milestone'
+                                      ? { kind: 'milestone', workingDays: 1 }
+                                      : { kind: 'task' },
+                                  )
+                                }}
+                                title="Click to switch between Task and Milestone"
+                                className={cn(
+                                  'inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-semibold transition-colors',
+                                  sub.kind === 'milestone'
+                                    ? 'border-purple-500 bg-purple-100/95 text-purple-950 hover:bg-purple-200'
+                                    : 'border-blue-300 bg-blue-50 text-blue-800 hover:bg-blue-100',
+                                )}
+                              >
+                                {sub.kind === 'milestone' ? (
+                                  <>
+                                    <Star className="h-3 w-3 text-amber-500 fill-amber-400 shrink-0" />
+                                    <span>Milestone</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckSquare className="h-3 w-3 text-primary shrink-0" />
+                                    <span>Task</span>
+                                  </>
+                                )}
+                              </button>
+                            </td>
                             <td className="px-2 py-1.5">
                               <input
                                 value={sub.name}
@@ -446,9 +480,15 @@ export function DeliverablesPage() {
                                 type="number"
                                 min={1}
                                 max={365}
-                                value={sub.workingDays}
+                                disabled={sub.kind === 'milestone'}
+                                readOnly={sub.kind === 'milestone'}
+                                value={sub.kind === 'milestone' ? 1 : sub.workingDays}
                                 onChange={(e) => updateSubTask(sub.id, { workingDays: Math.max(1, Number(e.target.value) || 1) })}
-                                className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-800 text-center focus:outline-none focus:ring-1 focus:ring-primary"
+                                title={sub.kind === 'milestone' ? 'Milestones are fixed at 1 working day' : 'Edit working days'}
+                                className={cn(
+                                  'w-20 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-800 text-center focus:outline-none focus:ring-1 focus:ring-primary',
+                                  sub.kind === 'milestone' && 'bg-slate-100 text-slate-400 cursor-not-allowed opacity-75',
+                                )}
                               />
                             </td>
                             <td className="px-2 py-1.5">
@@ -510,8 +550,8 @@ export function DeliverablesPage() {
                 {schedule.length === 0 ? (
                   <EmptyState title="No tasks to display" />
                 ) : (() => {
-                  const DAY_W = 32
-                  const ROW_H = 42
+                  const DAY_W = 24
+                  const ROW_H = 34
                   const totalWeeks = Math.max(1, Math.ceil(Math.max(totalWorkingDays, 5) / 5))
                   const totalDays = totalWeeks * 5
                   const trackWidth = totalDays * DAY_W
@@ -528,47 +568,29 @@ export function DeliverablesPage() {
                   return (
                     <div className="overflow-x-auto -mx-4 -mb-4 border-t border-slate-200">
                       <div className="inline-block min-w-full align-top">
-                        {/* Gantt Header: Left Task/Days column + Right Workweek & Working Day Header */}
+                        {/* Gantt Header: Left Task/Days column + Right Workweek Header (only WW) */}
                         <div className="flex bg-slate-100 border-b border-slate-200 text-[11px] font-semibold text-slate-600">
-                          <div className="w-[270px] shrink-0 px-3 py-2 border-r border-slate-200 flex items-center justify-between">
-                            <span>Task Name</span>
+                          <div className="w-[235px] shrink-0 px-2.5 py-1.5 border-r border-slate-200 flex items-center justify-between">
+                            <span>Task / Milestone</span>
                             <span>Days (Edit)</span>
                           </div>
-                          <div className="shrink-0" style={{ width: trackWidth }}>
-                            {/* Row 1: Workweek Headers (5 working days each) */}
-                            <div className="flex border-b border-slate-200">
-                              {weekBlocks.map((wb) => (
-                                <div
-                                  key={wb.wIdx}
-                                  style={{ width: 5 * DAY_W }}
-                                  className="shrink-0 text-center py-1 border-r last:border-r-0 border-slate-300 text-[11px] font-bold text-slate-700"
-                                >
-                                  {wb.label}
-                                </div>
-                              ))}
-                            </div>
-                            {/* Row 2: Individual Working Days (D1, D2, ...) aligned 1:1 with bars */}
-                            <div className="flex">
-                              {Array.from({ length: totalDays }, (_, d) => (
-                                <div
-                                  key={d}
-                                  style={{ width: DAY_W }}
-                                  className={cn(
-                                    'shrink-0 text-center py-1 border-r last:border-r-0 text-[10px]',
-                                    (d + 1) % 5 === 0 ? 'border-slate-300 font-semibold' : 'border-slate-200/70',
-                                  )}
-                                >
-                                  D{d + 1}
-                                </div>
-                              ))}
-                            </div>
+                          <div className="shrink-0 flex" style={{ width: trackWidth }}>
+                            {weekBlocks.map((wb) => (
+                              <div
+                                key={wb.wIdx}
+                                style={{ width: 5 * DAY_W }}
+                                className="shrink-0 text-center py-1.5 border-r last:border-r-0 border-slate-300 text-[11px] font-bold text-slate-700"
+                              >
+                                {wb.label}
+                              </div>
+                            ))}
                           </div>
                         </div>
 
                         {/* Gantt Body: Left Task List (with editable days) + Right Timeline Track with SVG Dependency Arrows */}
                         <div className="flex">
                           {/* Left Column: Task Name + Inline Editable Working Days */}
-                          <div className="w-[270px] shrink-0 border-r border-slate-200">
+                          <div className="w-[235px] shrink-0 border-r border-slate-200">
                             {schedule.map((item, idx) => {
                               const sub = item.subTask
                               const depIdx = sub.dependsOnId
@@ -578,7 +600,7 @@ export function DeliverablesPage() {
                                 <div
                                   key={sub.id}
                                   style={{ height: ROW_H }}
-                                  className="px-3 border-b last:border-b-0 border-slate-100 flex items-center justify-between gap-2 text-xs"
+                                  className="px-2.5 border-b last:border-b-0 border-slate-100 flex items-center justify-between gap-2 text-xs"
                                 >
                                   <div className="min-w-0 flex-1">
                                     <span className="font-semibold text-slate-800 truncate block leading-tight">
@@ -595,14 +617,19 @@ export function DeliverablesPage() {
                                       type="number"
                                       min={1}
                                       max={365}
-                                      value={sub.workingDays}
+                                      disabled={sub.kind === 'milestone'}
+                                      readOnly={sub.kind === 'milestone'}
+                                      value={sub.kind === 'milestone' ? 1 : sub.workingDays}
                                       onChange={(e) =>
                                         updateSubTask(sub.id, {
                                           workingDays: Math.max(1, Number(e.target.value) || 1),
                                         })
                                       }
-                                      className="w-12 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-center text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-primary"
-                                      title="Edit working days directly"
+                                      className={cn(
+                                        'w-11 rounded border border-slate-200 bg-white px-1 py-0.5 text-center text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-primary',
+                                        sub.kind === 'milestone' && 'bg-slate-100 text-slate-400 cursor-not-allowed opacity-75',
+                                      )}
+                                      title={sub.kind === 'milestone' ? 'Milestones are fixed at 1 working day' : 'Edit working days directly'}
                                     />
                                     <span className="text-[10px] font-medium text-slate-500">d</span>
                                   </label>
@@ -631,10 +658,10 @@ export function DeliverablesPage() {
                             </div>
 
                             {/* Horizontal Row Dividers & Gantt Bars */}
-                            {schedule.map((item, idx) => {
+                            {schedule.map((item) => {
                               const sub = item.subTask
                               const barLeft = item.startOffsetDays * DAY_W
-                              const barWidth = Math.max(1, sub.workingDays) * DAY_W
+                              const barWidth = (sub.kind === 'milestone' ? 1 : Math.max(1, sub.workingDays)) * DAY_W
                               return (
                                 <div
                                   key={sub.id}
@@ -642,16 +669,15 @@ export function DeliverablesPage() {
                                   className="relative border-b last:border-b-0 border-slate-100 flex items-center"
                                 >
                                   <div
-                                    title={`${sub.name}: ${item.startDate} → Due ${item.dueDate} (${sub.workingDays} working days)`}
-                                    style={{ left: barLeft + 2, width: Math.max(barWidth - 4, 18) }}
+                                    title={`${sub.name} (${sub.kind === 'milestone' ? 'Milestone' : 'Task'}): ${item.startDate} → Due ${item.dueDate} (${sub.kind === 'milestone' ? 1 : sub.workingDays} working day${(sub.kind === 'milestone' ? 1 : sub.workingDays) > 1 ? 's' : ''})`}
+                                    style={{ left: barLeft + 2, width: Math.max(barWidth - 4, 14) }}
                                     className={cn(
-                                      'absolute h-6 rounded-md border shadow-sm flex items-center justify-between px-2 text-[10px] font-semibold truncate z-10',
-                                      PRIORITY_BAR[sub.priority],
+                                      'absolute h-4 rounded-full border shadow-sm z-10',
+                                      sub.kind === 'milestone'
+                                        ? 'bg-purple-600 border-purple-400'
+                                        : PRIORITY_BAR[sub.priority],
                                     )}
-                                  >
-                                    <span className="truncate">{sub.name}</span>
-                                    <span className="ml-1 opacity-90 shrink-0">{sub.workingDays}d</span>
-                                  </div>
+                                  />
                                 </div>
                               )
                             })}

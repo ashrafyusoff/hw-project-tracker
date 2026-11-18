@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertTriangle, CheckSquare, ChevronLeft, ChevronRight, ClipboardPaste, Copy, GripVertical, Plus, Scissors, Star, X } from 'lucide-react'
+import { AlertTriangle, Check, CheckSquare, ChevronLeft, ChevronRight, ClipboardPaste, Copy, GripVertical, Plus, Scissors, Star, X } from 'lucide-react'
 import type { Milestone, Priority, Project, Task, Workstream } from '@/types'
 import { Badge, Button, Card } from '@/components/ui'
 import { usePersistedState } from '@/hooks/usePersistedState'
@@ -203,10 +203,11 @@ export function WorkWeekCalendar({
   const [dragOverCell, setDragOverCell] = useState<string>('')
   const [draggingId, setDraggingId] = useState<string>('')
   const [selectedItem, setSelectedItem] = useState<ItemRef | null>(null)
-  const [selectedDay, setSelectedDay] = useState<string>(today)
+  const [selectedDay, setSelectedDay] = useState<string>('')
   const [clipboard, setClipboard] = useState<ClipboardItem | null>(null)
   const [toast, setToast] = useState<string>('')
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [newItemKind, setNewItemKind] = useState<'task' | 'milestone'>('task')
   const [drawerTarget, setDrawerTarget] = useState<
     { kind: 'task'; task: Task } | { kind: 'new-task'; dueDate: string } | { kind: 'milestone'; milestone: Milestone } | null
   >(null)
@@ -221,8 +222,9 @@ export function WorkWeekCalendar({
     setDrawerOpen(true)
   }
 
-  function openNewTaskDrawer(dueDate: string) {
-    setSelectedDay(dueDate)
+  function openNewTaskDrawer(dueDate = '') {
+    if (dueDate) setSelectedDay(dueDate)
+    setNewItemKind('task')
     setDrawerTarget({ kind: 'new-task', dueDate })
     setDrawerOpen(true)
   }
@@ -423,10 +425,11 @@ export function WorkWeekCalendar({
           closeDrawer()
           return
         }
-        if (selectedItem || clipboard) {
+        if (selectedItem || clipboard || selectedDay) {
           e.preventDefault()
           setSelectedItem(null)
           setClipboard(null)
+          setSelectedDay('')
           return
         }
       }
@@ -447,6 +450,9 @@ export function WorkWeekCalendar({
       const target = e.target as HTMLElement | null
       if (!target?.closest('[data-calendar-item], [data-priority-box]')) {
         setSelectedItem(null)
+      }
+      if (!target?.closest('[data-calendar-item], [data-priority-box], [data-calendar-day], [data-add-task-btn]')) {
+        setSelectedDay('')
       }
     }
     window.addEventListener('keydown', onKeyDown)
@@ -551,10 +557,11 @@ export function WorkWeekCalendar({
           <Button
             size="sm"
             variant="primary"
-            onClick={() => openNewTaskDrawer(selectedDay || today)}
-            title={`Add a new task on the selected date (${selectedDay || today})`}
+            data-add-task-btn
+            onClick={() => openNewTaskDrawer(selectedDay)}
+            title={selectedDay ? `Add a new task or milestone on ${selectedDay}` : 'Add a new task or milestone'}
           >
-            <Plus className="h-3.5 w-3.5" /> Add Task ({selectedDay || today})
+            <Plus className="h-3.5 w-3.5" /> {selectedDay ? `Add Task (${selectedDay})` : 'Add Task'}
           </Button>
 
           <span className="text-xs text-slate-600 font-semibold ml-auto">{rangeLabel}</span>
@@ -838,6 +845,7 @@ export function WorkWeekCalendar({
                   return (
                     <div
                       key={day.ymd}
+                      data-calendar-day
                       onClick={() => setSelectedDay(day.ymd)}
                       onDoubleClick={() => openNewTaskDrawer(day.ymd)}
                       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dragOverCell !== day.ymd) setDragOverCell(day.ymd) }}
@@ -986,60 +994,103 @@ export function WorkWeekCalendar({
         </div>
       </div>
 
-      {/* Portal to document.body so fixed positioning is always anchored to the viewport's left sidebar */}
+      {/* Portal to document.body: Dual-Island Slide-Over Panel matching the Sidebar's 2 islands, extended to the right */}
       {createPortal(
         <>
           <aside
             aria-hidden={!drawerOpen}
             className={cn(
-              'fixed inset-y-0 left-0 z-50 w-full max-w-sm liquid-glass-chrome border-r border-slate-200 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out',
-              drawerOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none',
+              'fixed inset-y-0 left-0 z-50 w-full max-w-md flex flex-col gap-3 p-3 transition-transform duration-300 ease-in-out pointer-events-none',
+              drawerOpen ? 'translate-x-0' : '-translate-x-full',
             )}
           >
-            <div className="flex items-center justify-between h-12 px-4 liquid-card-header shrink-0">
-              <h3 className="text-sm font-semibold text-slate-900">
-                {drawerTarget?.kind === 'milestone'
-                  ? 'Edit Milestone'
-                  : drawerTarget?.kind === 'new-task'
-                    ? `Add Task (${drawerTarget.dueDate})`
-                    : 'Edit Task'}
-              </h3>
+            {/* Island 1: Top Header Island (same h-12 rounded-full capsule style as "HW Tracker" sidebar island, extended right) */}
+            <div className="pointer-events-auto flex h-12 items-center justify-between rounded-full liquid-glass shadow-xl px-4 shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 ring-1 ring-primary/20 shrink-0">
+                  {drawerTarget?.kind === 'milestone' || (drawerTarget?.kind === 'new-task' && newItemKind === 'milestone') ? (
+                    <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-400" />
+                  ) : (
+                    <CheckSquare className="h-3.5 w-3.5 text-primary" />
+                  )}
+                </div>
+                <h3 className="text-sm font-bold text-slate-900 truncate leading-tight">
+                  {drawerTarget?.kind === 'milestone'
+                    ? 'Edit Milestone'
+                    : drawerTarget?.kind === 'new-task'
+                      ? `${newItemKind === 'milestone' ? 'Add Milestone' : 'Add Task'}${drawerTarget.dueDate ? ` (${drawerTarget.dueDate})` : ''}`
+                      : 'Edit Task'}
+                </h3>
+              </div>
               <button
                 type="button"
                 onClick={closeDrawer}
-                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-200/60"
+                className="flex h-7 w-7 items-center justify-center rounded-full text-slate-500 hover:text-slate-800 hover:bg-slate-200/70 transition-colors"
                 title="Close"
                 aria-label="Close edit panel"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="p-3.5 overflow-y-auto flex-1">
-              {drawerTarget?.kind === 'task' && (
-                <TaskFormBody
-                  key={`drawer-task-${drawerTarget.task.id}-${drawerTarget.task.updatedAt}`}
-                  task={drawerTarget.task}
-                  compact
-                  onClose={closeDrawer}
-                />
-              )}
+
+            {/* Island 2: Content Island (same rounded-3xl style as Workspace sidebar island, extended right) */}
+            <div className="pointer-events-auto flex-1 flex flex-col rounded-3xl liquid-glass shadow-2xl overflow-hidden min-h-0">
               {drawerTarget?.kind === 'new-task' && (
-                <TaskFormBody
-                  key={`drawer-new-task-${drawerTarget.dueDate}-${filterProject}`}
-                  defaultProjectId={filterProject}
-                  defaultDueDate={drawerTarget.dueDate}
-                  compact
-                  onClose={closeDrawer}
-                />
+                <div className="flex items-center gap-2 px-4 pt-3.5 pb-2.5 border-b border-slate-200/80 shrink-0">
+                  <span className="text-xs font-semibold text-slate-500 mr-1">Type:</span>
+                  <Button
+                    type="button"
+                    variant={newItemKind === 'task' ? 'primary' : 'secondary'}
+                    onClick={() => setNewItemKind('task')}
+                  >
+                    <CheckSquare className="h-3.5 w-3.5" /> Task {newItemKind === 'task' && <Check className="h-3.5 w-3.5 ml-0.5" />}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={newItemKind === 'milestone' ? 'primary' : 'secondary'}
+                    onClick={() => setNewItemKind('milestone')}
+                  >
+                    <Star className="h-3.5 w-3.5 text-amber-400 fill-amber-400" /> Milestone {newItemKind === 'milestone' && <Check className="h-3.5 w-3.5 ml-0.5" />}
+                  </Button>
+                </div>
               )}
-              {drawerTarget?.kind === 'milestone' && (
-                <MilestoneFormBody
-                  key={`drawer-ms-${drawerTarget.milestone.id}-${drawerTarget.milestone.updatedAt}`}
-                  milestone={drawerTarget.milestone}
-                  compact
-                  onClose={closeDrawer}
-                />
-              )}
+
+              <div className="p-4 overflow-y-auto flex-1">
+                {drawerTarget?.kind === 'task' && (
+                  <TaskFormBody
+                    key={`drawer-task-${drawerTarget.task.id}-${drawerTarget.task.updatedAt}`}
+                    task={drawerTarget.task}
+                    compact
+                    onClose={closeDrawer}
+                  />
+                )}
+                {drawerTarget?.kind === 'new-task' && newItemKind === 'task' && (
+                  <TaskFormBody
+                    key={`drawer-new-task-${drawerTarget.dueDate}-${filterProject}`}
+                    defaultProjectId={filterProject}
+                    defaultDueDate={drawerTarget.dueDate || undefined}
+                    compact
+                    onClose={closeDrawer}
+                  />
+                )}
+                {drawerTarget?.kind === 'new-task' && newItemKind === 'milestone' && (
+                  <MilestoneFormBody
+                    key={`drawer-new-ms-${drawerTarget.dueDate}-${filterProject}`}
+                    defaultProjectId={filterProject}
+                    defaultTargetDate={drawerTarget.dueDate || undefined}
+                    compact
+                    onClose={closeDrawer}
+                  />
+                )}
+                {drawerTarget?.kind === 'milestone' && (
+                  <MilestoneFormBody
+                    key={`drawer-ms-${drawerTarget.milestone.id}-${drawerTarget.milestone.updatedAt}`}
+                    milestone={drawerTarget.milestone}
+                    compact
+                    onClose={closeDrawer}
+                  />
+                )}
+              </div>
             </div>
           </aside>
           {toast && (
