@@ -14,12 +14,26 @@ export function getSupplierContacts(s: Partial<Supplier>): SupplierContact[] {
     return [
       {
         contactPerson: s.contactPerson ?? '',
+        role: '',
         phone: s.phone ?? '',
         email: s.email ?? '',
       },
     ]
   }
   return []
+}
+
+export function getSupplierDeliverables(s: Partial<Supplier>): string[] {
+  if (Array.isArray(s.deliverables) && s.deliverables.length > 0) {
+    return s.deliverables
+  }
+  if (!s.category) return []
+  const match = s.category.match(/^Others\s*\((.+)\)$/i)
+  if (match) return [match[1].trim()]
+  return s.category
+    .split(',')
+    .map((x) => x.trim())
+    .filter((x) => Boolean(x) && x.toLowerCase() !== 'others')
 }
 
 function normalizeContacts(input: SupplierInput): {
@@ -35,20 +49,22 @@ function normalizeContacts(input: SupplierInput): {
   const cleaned = raw
     .map((c) => ({
       contactPerson: (c.contactPerson ?? '').trim(),
+      role: (c.role ?? '').trim(),
       phone: (c.phone ?? '').trim(),
       email: (c.email ?? '').trim(),
     }))
-    .filter((c) => c.contactPerson || c.phone || c.email)
+    .filter((c) => c.contactPerson || c.role || c.phone || c.email)
 
   if (cleaned.length === 0 && (input.contactPerson || input.phone || input.email)) {
     cleaned.push({
       contactPerson: (input.contactPerson ?? '').trim(),
+      role: '',
       phone: (input.phone ?? '').trim(),
       email: (input.email ?? '').trim(),
     })
   }
 
-  const first = cleaned[0] ?? { contactPerson: '', phone: '', email: '' }
+  const first = cleaned[0] ?? { contactPerson: '', role: '', phone: '', email: '' }
   return {
     contacts: cleaned,
     contactPerson: first.contactPerson,
@@ -150,8 +166,9 @@ export const emptySupplier = (): SupplierInput => ({
   contactPerson: '',
   email: '',
   phone: '',
-  contacts: [{ contactPerson: '', phone: '', email: '' }],
+  contacts: [{ contactPerson: '', role: '', phone: '', email: '' }],
+  deliverables: [],
   location: '',
-  category: 'PCB',
+  category: '',
   remarks: '',
 })

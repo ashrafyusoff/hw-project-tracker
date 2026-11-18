@@ -515,7 +515,7 @@ export function SettingsPage() {
 
       <Card title="About">
         <p className="text-sm text-slate-600">
-          <b>HW Tracker</b> — Hardware Project Management Application · Website by <b className="text-primary">Pacca1214</b>
+          <b>HW Tracker</b> — Hardware Project Management Application · Website by <b className="text-primary">Pacca</b>
         </p>
       </Card>
 

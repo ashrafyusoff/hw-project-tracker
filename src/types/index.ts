@@ -46,6 +46,7 @@ export const SUPPLIER_CATEGORIES = ['PCB', 'Socket', 'Handler Kit', 'Stiffener',
 
 export interface SupplierContact {
   contactPerson: string
+  role?: string
   phone: string
   email: string
 }
@@ -90,6 +91,7 @@ export interface Supplier extends BaseRecord {
   email: string
   phone: string
   contacts?: SupplierContact[]
+  deliverables?: string[]
   location: string
   category: string
   remarks: string

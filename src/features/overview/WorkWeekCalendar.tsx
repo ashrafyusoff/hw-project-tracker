@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertTriangle, CheckSquare, ChevronLeft, ChevronRight, ClipboardPaste, Copy, GripVertical, Scissors, Star, X } from 'lucide-react'
+import { AlertTriangle, CheckSquare, ChevronLeft, ChevronRight, ClipboardPaste, Copy, GripVertical, Plus, Scissors, Star, X } from 'lucide-react'
 import type { Milestone, Priority, Project, Task, Workstream } from '@/types'
 import { Badge, Button, Card } from '@/components/ui'
 import { usePersistedState } from '@/hooks/usePersistedState'
@@ -121,22 +121,22 @@ const PRIORITY_ITEMS: { priority: Priority; boxCls: string; cardCls: string }[] 
   {
     priority: 'Critical',
     boxCls: 'bg-red-500 border-red-700',
-    cardCls: 'border-red-400 border-l-4 border-l-red-600 bg-red-100/90 text-red-950',
+    cardCls: 'border-red-400 bg-red-100/90 text-red-950',
   },
   {
     priority: 'High',
     boxCls: 'bg-amber-400 border-amber-600',
-    cardCls: 'border-amber-400 border-l-4 border-l-amber-500 bg-amber-100/90 text-amber-950',
+    cardCls: 'border-amber-400 bg-amber-100/90 text-amber-950',
   },
   {
     priority: 'Medium',
     boxCls: 'bg-blue-500 border-blue-700',
-    cardCls: 'border-blue-400 border-l-4 border-l-blue-600 bg-blue-100/90 text-blue-950',
+    cardCls: 'border-blue-400 bg-blue-100/90 text-blue-950',
   },
   {
     priority: 'Low',
     boxCls: 'bg-slate-300 border-slate-500',
-    cardCls: 'border-slate-300 border-l-4 border-l-slate-500 bg-slate-100 text-slate-900',
+    cardCls: 'border-slate-300 bg-slate-100 text-slate-900',
   },
 ]
 
@@ -157,7 +157,7 @@ function taskCardStyle(t: Task): string {
 }
 
 function milestoneCardStyle(): string {
-  return 'border-purple-500 border-l-4 border-l-purple-700 bg-purple-100/95 text-purple-950'
+  return 'border-purple-500 bg-purple-100/95 text-purple-950'
 }
 
 function milestoneVarianceLabel(m: Milestone): string {
@@ -207,7 +207,9 @@ export function WorkWeekCalendar({
   const [clipboard, setClipboard] = useState<ClipboardItem | null>(null)
   const [toast, setToast] = useState<string>('')
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [drawerTarget, setDrawerTarget] = useState<{ kind: 'task'; task: Task } | { kind: 'milestone'; milestone: Milestone } | null>(null)
+  const [drawerTarget, setDrawerTarget] = useState<
+    { kind: 'task'; task: Task } | { kind: 'new-task'; dueDate: string } | { kind: 'milestone'; milestone: Milestone } | null
+  >(null)
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -216,6 +218,12 @@ export function WorkWeekCalendar({
 
   function openTaskDrawer(t: Task) {
     setDrawerTarget({ kind: 'task', task: t })
+    setDrawerOpen(true)
+  }
+
+  function openNewTaskDrawer(dueDate: string) {
+    setSelectedDay(dueDate)
+    setDrawerTarget({ kind: 'new-task', dueDate })
     setDrawerOpen(true)
   }
 
@@ -506,14 +514,14 @@ export function WorkWeekCalendar({
 
   return (
     <Card className="xl:col-span-3">
-      {/* Row 1: Title | Row 2: Project filter, Weeks, Month navigation, Date range */}
-      <header className="-mx-4 -mt-4 mb-3 px-4 py-3 liquid-card-header space-y-2">
+      {/* Row 1: Title | Row 2: Project filter, Weeks, Month navigation, Add Task on Selected Date, Date range */}
+      <header className="-mx-3 -mt-3 mb-2.5 px-3.5 py-2.5 liquid-card-header space-y-1.5">
         <h2 className="text-sm font-semibold text-slate-800 tracking-tight">Workweek Schedule — Tasks & Milestones</h2>
         <div className="flex flex-wrap items-center gap-2">
           <select
             value={filterProject}
             onChange={(e) => setFilterProject(e.target.value)}
-            className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/30"
+            className="h-8 rounded-full liquid-glass-pill px-3.5 text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/30"
           >
             <option value="">All projects</option>
             {projects.map((p) => (
@@ -521,7 +529,7 @@ export function WorkWeekCalendar({
             ))}
           </select>
 
-          <label className="inline-flex items-center gap-1.5 text-xs text-slate-700 bg-slate-100 border border-slate-200 rounded-md px-2 h-8">
+          <label className="inline-flex h-8 items-center gap-1.5 rounded-full liquid-glass-pill px-3.5 text-xs text-slate-700">
             <span className="font-medium">Weeks:</span>
             <input
               type="number"
@@ -529,16 +537,26 @@ export function WorkWeekCalendar({
               max={10}
               value={clampedWeeks}
               onChange={(e) => setWeeksToShow(Math.max(4, Math.min(10, Number(e.target.value) || 4)))}
-              className="w-11 bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs font-semibold text-slate-800 text-center focus:outline-none focus:ring-1 focus:ring-primary"
+              className="weeks-pill-input w-8 bg-transparent border-0 p-0 text-xs font-bold text-slate-800 text-center focus:outline-none"
             />
             <span className="text-[11px] text-slate-500">(4–10)</span>
           </label>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
             <Button size="sm" onClick={() => shiftMonth(-1)} title="Previous month"><ChevronLeft className="h-3.5 w-3.5" /> Prev Month</Button>
             <Button size="sm" onClick={goToCurrentWeek}>Current Week</Button>
             <Button size="sm" onClick={() => shiftMonth(1)} title="Next month">Next Month <ChevronRight className="h-3.5 w-3.5" /></Button>
           </div>
+
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={() => openNewTaskDrawer(selectedDay || today)}
+            title={`Add a new task on the selected date (${selectedDay || today})`}
+          >
+            <Plus className="h-3.5 w-3.5" /> Add Task ({selectedDay || today})
+          </Button>
+
           <span className="text-xs text-slate-600 font-semibold ml-auto">{rangeLabel}</span>
         </div>
       </header>
@@ -609,13 +627,13 @@ export function WorkWeekCalendar({
             </button>
           )}
         </div>
-        <span className="text-slate-500">Single-click to select (Copy/Cut/Priority) · Double-click to edit · Drag & drop to move.</span>
+        <span className="text-slate-500">Single-click date/item to select · Double-click date to add task or item to edit · Drag & drop to move.</span>
       </div>
 
       {/* Split Layout: Left Compact Mini Calendar + Overdue Basket | Right 5-Day Workweek Schedule */}
-      <div className="relative flex flex-col lg:block -mx-4 -mb-4 border-t border-slate-200">
+      <div className="relative flex flex-col lg:block -mx-3 -mb-3 border-t border-slate-200">
         {/* LEFT: Compact 2-Month Mini Calendar + Overdue Basket (matches right calendar height on desktop) */}
-        <aside className="w-full lg:absolute lg:inset-y-0 lg:left-0 lg:w-[240px] flex flex-col bg-slate-50/70 text-slate-700 p-2.5 border-b lg:border-b-0 lg:border-r border-slate-200 select-none">
+        <aside className="w-full lg:absolute lg:inset-y-0 lg:left-0 lg:w-[205px] flex flex-col bg-slate-50/70 text-slate-700 p-2 border-b lg:border-b-0 lg:border-r border-slate-200 select-none">
           <div className="shrink-0">
             {miniMonths.map((month, mIdx) => (
               <div key={month.title} className={cn(mIdx > 0 && 'mt-2 pt-2 border-t border-slate-200')}>
@@ -736,7 +754,7 @@ export function WorkWeekCalendar({
                       onDoubleClick={(e) => { e.stopPropagation(); setSelectedItem(ref); openTaskDrawer(t) }}
                       title={`Overdue Task: ${t.name}\nDevice: ${projectDevice(t.projectId) || '—'}\nDeliverable: ${deliverableName(t.workstreamId) || '—'}\nDue: ${t.dueDate}\nDrag to calendar or double-click to edit`}
                       className={cn(
-                        'group relative cursor-grab active:cursor-grabbing rounded border px-2 py-1.5 text-[11px] shadow-sm transition-all select-none min-w-0',
+                        'group relative cursor-grab active:cursor-grabbing rounded-xl border px-2.5 py-1.5 text-[11px] shadow-sm transition-all select-none min-w-0',
                         taskCardStyle(t),
                         isSelected && 'ring-2 ring-primary',
                         dimmed && 'opacity-25 saturate-50',
@@ -765,45 +783,45 @@ export function WorkWeekCalendar({
         </aside>
 
         {/* RIGHT: 5-Day Workweek Schedule */}
-        <div className="lg:ml-[240px] overflow-x-auto">
-          <div className="min-w-[820px]">
+        <div className="lg:ml-[205px] overflow-x-auto">
+          <div className="min-w-[660px]">
             {/* 5-day Workweek Header */}
-            <div className="grid grid-cols-[120px_repeat(5,minmax(0,1fr))] bg-slate-100 border-b border-slate-200 text-xs font-semibold text-slate-700">
-              <div className="px-3 py-2 border-r border-slate-200">Workweek</div>
+            <div className="grid grid-cols-[96px_repeat(5,minmax(0,1fr))] bg-slate-100 border-b border-slate-200 text-xs font-semibold text-slate-700">
+              <div className="px-2.5 py-1.5 border-r border-slate-200">Workweek</div>
               {DAY_NAMES.map((day) => (
-                <div key={day} className="px-3 py-2 border-r last:border-r-0 border-slate-200">{day}</div>
+                <div key={day} className="px-2.5 py-1.5 border-r last:border-r-0 border-slate-200">{day}</div>
               ))}
             </div>
 
             {/* Workweek Rows */}
             {weeks.map((week) => (
-              <div key={week.mondayYmd} className="grid grid-cols-[120px_repeat(5,minmax(0,1fr))] border-b last:border-b-0 border-slate-200">
+              <div key={week.mondayYmd} className="grid grid-cols-[96px_repeat(5,minmax(0,1fr))] border-b last:border-b-0 border-slate-200">
                 {/* Workweek Label Cell */}
                 <div
                   onDragOver={(e) => { e.preventDefault(); setDragOverCell(`ww-${week.mondayYmd}`) }}
                   onDragLeave={() => setDragOverCell('')}
                   onDrop={(e) => onDropOnDay(e, week.mondayYmd, week.ww)}
                   className={cn(
-                    'p-3 border-r border-slate-200 bg-slate-50 flex flex-col justify-between transition-colors',
+                    'p-2 border-r border-slate-200 bg-slate-50 flex flex-col justify-between transition-colors',
                     dragOverCell === `ww-${week.mondayYmd}` && 'bg-primary-soft ring-2 ring-inset ring-primary',
                   )}
                 >
                   <div>
-                    <span className="inline-flex items-center rounded bg-slate-800 px-2 py-0.5 text-xs font-bold text-white">
+                    <span className="inline-flex items-center rounded bg-slate-800 px-1.5 py-0.5 text-[11px] font-bold text-white">
                       WW{String(week.ww).padStart(2, '0')}
                     </span>
-                    <p className="text-[11px] text-slate-600 font-medium mt-1">{week.mondayLabel} – {week.fridayLabel}</p>
+                    <p className="text-[10px] text-slate-600 font-medium mt-1 leading-tight">{week.mondayLabel} – {week.fridayLabel}</p>
                   </div>
                   {clipboard ? (
                     <button
                       onClick={() => handlePaste(week.mondayYmd, week.ww)}
-                      className="mt-2 inline-flex items-center gap-1 rounded bg-primary px-2 py-1 text-[11px] font-medium text-white hover:bg-primary-hover"
+                      className="mt-1.5 inline-flex items-center gap-1 rounded bg-primary px-1.5 py-0.5 text-[10px] font-medium text-white hover:bg-primary-hover"
                       title="Paste onto Monday of this workweek"
                     >
-                      <ClipboardPaste className="h-3 w-3" /> Paste (Mon)
+                      <ClipboardPaste className="h-3 w-3" /> Paste
                     </button>
                   ) : (
-                    <span className="text-[10px] text-slate-400 mt-2">Drop here → Mon</span>
+                    <span className="text-[9px] text-slate-400 mt-1">Drop → Mon</span>
                   )}
                 </div>
 
@@ -821,32 +839,47 @@ export function WorkWeekCalendar({
                     <div
                       key={day.ymd}
                       onClick={() => setSelectedDay(day.ymd)}
+                      onDoubleClick={() => openNewTaskDrawer(day.ymd)}
                       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dragOverCell !== day.ymd) setDragOverCell(day.ymd) }}
                       onDragLeave={() => setDragOverCell((c) => (c === day.ymd ? '' : c))}
                       onDrop={(e) => onDropOnDay(e, day.ymd, week.ww)}
                       className={cn(
-                        'min-h-[130px] p-2 border-r last:border-r-0 border-slate-200 flex flex-col gap-1.5 transition-colors min-w-0',
+                        'min-h-[90px] p-1.5 border-r last:border-r-0 border-slate-200 flex flex-col gap-1 transition-colors min-w-0',
                         day.isToday ? 'bg-blue-50/50' : 'bg-white',
-                        isSelectedDay && 'ring-1 ring-inset ring-slate-400',
+                        isSelectedDay && 'ring-1 ring-inset ring-primary/60',
                         isOver && 'bg-primary-soft ring-2 ring-inset ring-primary',
                       )}
                     >
-                      <div className="flex items-center justify-between text-xs mb-0.5 border-b border-slate-100 pb-1 shrink-0">
-                        <span className={cn('font-medium', day.isToday ? 'text-primary font-bold' : 'text-slate-600')}>
+                      <div className="flex items-center justify-between text-[11px] mb-0.5 border-b border-slate-100 pb-0.5 shrink-0">
+                        <span
+                          onDoubleClick={(e) => { e.stopPropagation(); openNewTaskDrawer(day.ymd) }}
+                          title="Double-click date to add task on this day"
+                          className={cn('font-medium cursor-pointer hover:text-primary', day.isToday ? 'text-primary font-bold' : 'text-slate-600')}
+                        >
                           {day.dayLabel}
                           {totalDayItems > 0 && (
                             <span className="ml-1 text-[10px] font-normal text-slate-400">({totalDayItems})</span>
                           )}
                         </span>
                         <div className="flex items-center gap-1">
+                          {isSelectedDay && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); openNewTaskDrawer(day.ymd) }}
+                              title={`Add task on ${day.dayLabel}`}
+                              className="inline-flex items-center gap-0.5 rounded bg-primary/10 hover:bg-primary text-primary hover:text-white px-1 py-0.5 text-[10px] font-semibold transition-colors"
+                            >
+                              <Plus className="h-2.5 w-2.5" /> Task
+                            </button>
+                          )}
                           {day.isToday && <Badge color="blue">Today</Badge>}
                           {clipboard && (
                             <button
                               onClick={(e) => { e.stopPropagation(); void handlePaste(day.ymd, week.ww) }}
-                              className="inline-flex items-center gap-0.5 rounded bg-primary/10 hover:bg-primary text-primary hover:text-white px-1.5 py-0.5 text-[11px] font-medium transition-colors"
+                              className="inline-flex items-center gap-0.5 rounded bg-primary/10 hover:bg-primary text-primary hover:text-white px-1 py-0.5 text-[10px] font-medium transition-colors"
                               title={`Paste "${clipboard.name}" onto ${day.dayLabel}`}
                             >
-                              <ClipboardPaste className="h-3 w-3" /> Paste
+                              <ClipboardPaste className="h-2.5 w-2.5" /> Paste
                             </button>
                           )}
                         </div>
@@ -877,8 +910,8 @@ export function WorkWeekCalendar({
                               onDoubleClick={(e) => { e.stopPropagation(); setSelectedItem(ref); setSelectedDay(day.ymd); openMilestoneDrawer(m) }}
                               title={`Milestone: ${m.name}\nDevice: ${projectDevice(m.projectId) || '—'}\nTarget Date: ${m.targetDate}${m.actualDate ? `\nActual Date: ${m.actualDate}` : ''}${variance ? `\n${variance}` : ''}\nSingle-click to select · Double-click to edit`}
                               className={cn(
-                                'group relative cursor-grab active:cursor-grabbing rounded border shadow-sm transition-all select-none min-w-0',
-                                isTwoColMatrix ? 'px-1.5 py-1 text-[11px]' : 'px-2 py-1.5 text-xs',
+                                'group relative cursor-grab active:cursor-grabbing rounded-xl border shadow-sm transition-all select-none min-w-0',
+                                isTwoColMatrix ? 'px-2 py-1 text-[11px]' : 'px-2.5 py-1.5 text-xs',
                                 milestoneCardStyle(),
                                 isSelected && 'ring-2 ring-primary',
                                 isMilestoneDimmed && 'opacity-25 saturate-50',
@@ -918,8 +951,8 @@ export function WorkWeekCalendar({
                               onDoubleClick={(e) => { e.stopPropagation(); setSelectedItem(ref); setSelectedDay(day.ymd); openTaskDrawer(t) }}
                               title={`Task: ${t.name}\nDevice: ${projectDevice(t.projectId) || '—'}\nDeliverable: ${deliverableName(t.workstreamId) || '—'}\nDue: ${t.dueDate}\nSingle-click to select · Double-click to edit`}
                               className={cn(
-                                'group relative cursor-grab active:cursor-grabbing rounded border shadow-sm transition-all select-none min-w-0',
-                                isTwoColMatrix ? 'px-1.5 py-1 text-[11px]' : 'px-2 py-1.5 text-xs',
+                                'group relative cursor-grab active:cursor-grabbing rounded-xl border shadow-sm transition-all select-none min-w-0',
+                                isTwoColMatrix ? 'px-2 py-1 text-[11px]' : 'px-2.5 py-1.5 text-xs',
                                 taskCardStyle(t),
                                 isSelected && 'ring-2 ring-primary',
                                 dimmed && 'opacity-25 saturate-50',
@@ -963,9 +996,13 @@ export function WorkWeekCalendar({
               drawerOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none',
             )}
           >
-            <div className="flex items-center justify-between h-14 px-4 liquid-card-header shrink-0">
+            <div className="flex items-center justify-between h-12 px-4 liquid-card-header shrink-0">
               <h3 className="text-sm font-semibold text-slate-900">
-                {drawerTarget?.kind === 'milestone' ? 'Edit Milestone' : 'Edit Task'}
+                {drawerTarget?.kind === 'milestone'
+                  ? 'Edit Milestone'
+                  : drawerTarget?.kind === 'new-task'
+                    ? `Add Task (${drawerTarget.dueDate})`
+                    : 'Edit Task'}
               </h3>
               <button
                 type="button"
@@ -982,6 +1019,15 @@ export function WorkWeekCalendar({
                 <TaskFormBody
                   key={`drawer-task-${drawerTarget.task.id}-${drawerTarget.task.updatedAt}`}
                   task={drawerTarget.task}
+                  compact
+                  onClose={closeDrawer}
+                />
+              )}
+              {drawerTarget?.kind === 'new-task' && (
+                <TaskFormBody
+                  key={`drawer-new-task-${drawerTarget.dueDate}-${filterProject}`}
+                  defaultProjectId={filterProject}
+                  defaultDueDate={drawerTarget.dueDate}
                   compact
                   onClose={closeDrawer}
                 />

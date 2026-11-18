@@ -7,8 +7,9 @@ import { useTable } from '@/hooks/useTable'
 import { usePersistedState } from '@/hooks/usePersistedState'
 import type { Project, Supplier } from '@/types'
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Input, Loading, Modal, Select } from '@/components/ui'
+import { TabSaveControls } from '@/components/TabSaveControls'
 import { SupplierForm } from '@/features/suppliers/SupplierForm'
-import { deleteSupplier, getSupplierContacts, linkSupplierToProject, unlinkSupplierFromProject } from '@/services/supplierService'
+import { deleteSupplier, getSupplierContacts, getSupplierDeliverables, linkSupplierToProject, unlinkSupplierFromProject } from '@/services/supplierService'
 import { formatDate } from '@/utils/helpers'
 import { errorMessage } from '@/utils/validation'
 
@@ -36,20 +37,32 @@ export function SuppliersPage() {
       .filter((s) => {
         if (!q) return true
         const contactsText = getSupplierContacts(s)
-          .map((c) => `${c.contactPerson} ${c.email} ${c.phone}`)
+          .map((c) => `${c.contactPerson} ${c.role ?? ''} ${c.email} ${c.phone}`)
           .join(' ')
-        return `${s.name} ${s.location} ${s.category} ${contactsText}`.toLowerCase().includes(q)
+        const delivsText = getSupplierDeliverables(s).join(' ')
+        return `${s.name} ${s.location} ${delivsText} ${contactsText}`.toLowerCase().includes(q)
       })
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [suppliers, search])
 
   if (!suppliers) return <Loading />
 
+  const suppliersFingerprint = JSON.stringify(suppliers)
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <Input placeholder="Search suppliers, category, contact, email…" value={search} onChange={(e) => setSearch(e.target.value)} className="!w-72" />
-        <Button variant="primary" className="ml-auto" onClick={() => { setEditing(undefined); setFormOpen(true) }}><Plus className="h-4 w-4" /> Add Supplier</Button>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <Button onClick={() => { setEditing(undefined); setFormOpen(true) }}><Plus className="h-4 w-4" /> Add Supplier</Button>
+          <TabSaveControls
+            tabKey="suppliers"
+            tabLabel="Suppliers"
+            buttonLabel="Save Suppliers"
+            fingerprint={suppliersFingerprint}
+            currentPathPrefix="/suppliers"
+          />
+        </div>
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
       <Card className="!p-0">
@@ -59,12 +72,12 @@ export function SuppliersPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-xs text-slate-500 text-left bg-slate-50">
-                <tr>{['Supplier', 'Category', 'Contact Person', 'Email', 'Phone', 'Location', 'Actions'].map((h) => <th key={h} className="px-3 py-2 font-medium whitespace-nowrap">{h}</th>)}</tr>
+                <tr>{['Supplier', 'Deliverables', 'Contact Person', 'Role', 'Email', 'Phone', 'Location', 'Actions'].map((h) => <th key={h} className="px-3 py-2 font-medium whitespace-nowrap">{h}</th>)}</tr>
               </thead>
               <tbody>
                 {rows.map((s) => {
                   const contacts = getSupplierContacts(s)
-                  const first = contacts[0] ?? { contactPerson: '—', email: '—', phone: '—' }
+                  const first = contacts[0] ?? { contactPerson: '—', role: '—', email: '—', phone: '—' }
                   const extraContacts = contacts.slice(1)
                   const isExpanded = !!expandedIds[s.id]
                   return (
@@ -107,8 +120,8 @@ function SupplierRowGroup({
   onDelete,
 }: {
   supplier: Supplier
-  firstContact: { contactPerson: string; email: string; phone: string }
-  extraContacts: { contactPerson: string; email: string; phone: string }[]
+  firstContact: { contactPerson: string; role?: string; email: string; phone: string }
+  extraContacts: { contactPerson: string; role?: string; email: string; phone: string }[]
   expanded: boolean
   onToggleExpand: () => void
   onOpenDetail: () => void
@@ -140,7 +153,13 @@ function SupplierRowGroup({
             <span>{s.name}</span>
           </div>
         </td>
-        <td className="px-3 whitespace-nowrap"><Badge color="blue">{s.category}</Badge></td>
+        <td className="px-3">
+          <div className="flex flex-wrap gap-1">
+            {getSupplierDeliverables(s).map((d) => (
+              <Badge key={d} color="blue">{d}</Badge>
+            ))}
+          </div>
+        </td>
         <td className="px-3 whitespace-nowrap">
           <div className="flex items-center gap-1.5">
             <span>{firstContact.contactPerson || '—'}</span>
@@ -159,6 +178,7 @@ function SupplierRowGroup({
             )}
           </div>
         </td>
+        <td className="px-3 text-slate-600 whitespace-nowrap">{firstContact.role || '—'}</td>
         <td className="px-3 text-slate-500 whitespace-nowrap">{firstContact.email || '—'}</td>
         <td className="px-3 whitespace-nowrap">{firstContact.phone || '—'}</td>
         <td className="px-3 whitespace-nowrap">{s.location || '—'}</td>
@@ -181,6 +201,7 @@ function SupplierRowGroup({
             </td>
             <td className="px-3 py-1.5 text-slate-400">—</td>
             <td className="px-3 py-1.5 font-medium text-slate-700 whitespace-nowrap">{c.contactPerson || '—'}</td>
+            <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{c.role || '—'}</td>
             <td className="px-3 py-1.5 text-slate-500 whitespace-nowrap">{c.email || '—'}</td>
             <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{c.phone || '—'}</td>
             <td className="px-3 py-1.5 text-slate-400">—</td>
@@ -221,10 +242,9 @@ function SupplierDetail({ supplierId, onClose }: { supplierId: string; onClose: 
   return (
     <Modal open onClose={onClose} title={s.name} wide>
       <div className="space-y-5 text-sm">
-        <div className="grid sm:grid-cols-3 gap-2 text-slate-600">
-          <p><b className="text-slate-800">Category:</b> {s.category}</p>
+        <div className="grid sm:grid-cols-2 gap-2 text-slate-600">
+          <p><b className="text-slate-800">Deliverables:</b> {getSupplierDeliverables(s).join(', ') || '—'}</p>
           <p><b className="text-slate-800">Location:</b> {s.location || '—'}</p>
-          <p><b className="text-slate-800">Remarks:</b> {s.remarks || '—'}</p>
         </div>
 
         {/* All Contacts Table */}
@@ -239,6 +259,7 @@ function SupplierDetail({ supplierId, onClose }: { supplierId: string; onClose: 
                   <tr>
                     <th className="px-3 py-1.5 font-medium">#</th>
                     <th className="px-3 py-1.5 font-medium">Contact Person</th>
+                    <th className="px-3 py-1.5 font-medium">Role</th>
                     <th className="px-3 py-1.5 font-medium">Phone Number</th>
                     <th className="px-3 py-1.5 font-medium">Email</th>
                   </tr>
@@ -248,6 +269,7 @@ function SupplierDetail({ supplierId, onClose }: { supplierId: string; onClose: 
                     <tr key={i} className="border-t border-slate-100">
                       <td className="px-3 py-1.5 text-slate-400">{i + 1}</td>
                       <td className="px-3 py-1.5 font-medium text-slate-800">{c.contactPerson || '—'}</td>
+                      <td className="px-3 py-1.5 text-slate-600">{c.role || '—'}</td>
                       <td className="px-3 py-1.5 text-slate-600">{c.phone || '—'}</td>
                       <td className="px-3 py-1.5 text-slate-500">{c.email || '—'}</td>
                     </tr>

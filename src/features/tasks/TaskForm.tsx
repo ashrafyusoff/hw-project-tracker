@@ -14,6 +14,7 @@ export function TaskForm({
   task,
   defaultProjectId,
   defaultWorkstreamId,
+  defaultDueDate,
   nonNpiOnly = false,
   onClose,
 }: {
@@ -21,16 +22,18 @@ export function TaskForm({
   task?: Task
   defaultProjectId?: string
   defaultWorkstreamId?: string
+  defaultDueDate?: string
   nonNpiOnly?: boolean
   onClose: () => void
 }) {
   return (
     <Modal open={open} onClose={onClose} title={task ? 'Edit Task' : 'Add Task'} wide>
       <TaskFormBody
-        key={`${open ? 'open' : 'closed'}-${task?.id ?? 'new'}-${task?.updatedAt ?? ''}-${defaultProjectId ?? ''}-${defaultWorkstreamId ?? ''}-${nonNpiOnly ? 'nonnpi' : 'all'}`}
+        key={`${open ? 'open' : 'closed'}-${task?.id ?? 'new'}-${task?.updatedAt ?? ''}-${defaultProjectId ?? ''}-${defaultWorkstreamId ?? ''}-${defaultDueDate ?? ''}-${nonNpiOnly ? 'nonnpi' : 'all'}`}
         task={task}
         defaultProjectId={defaultProjectId}
         defaultWorkstreamId={defaultWorkstreamId}
+        defaultDueDate={defaultDueDate}
         nonNpiOnly={nonNpiOnly}
         onClose={onClose}
       />
@@ -42,6 +45,7 @@ export function TaskFormBody({
   task,
   defaultProjectId,
   defaultWorkstreamId,
+  defaultDueDate,
   nonNpiOnly = false,
   compact = false,
   onClose,
@@ -49,6 +53,7 @@ export function TaskFormBody({
   task?: Task
   defaultProjectId?: string
   defaultWorkstreamId?: string
+  defaultDueDate?: string
   nonNpiOnly?: boolean
   compact?: boolean
   onClose: () => void
@@ -67,12 +72,12 @@ export function TaskFormBody({
       }
     }
     const base = emptyTask(defaultProjectId)
-    const start = base.startDate || todayStr()
+    const start = defaultDueDate || base.startDate || todayStr()
     return {
       ...base,
       workstreamId: defaultWorkstreamId ?? '',
       startDate: start,
-      dueDate: addWorkingDays(start, 1),
+      dueDate: defaultDueDate || addWorkingDays(start, 1),
       workingDays: 1,
       dependsOnTaskId: '',
     }

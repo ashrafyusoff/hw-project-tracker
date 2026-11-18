@@ -21,6 +21,7 @@ import {
   type WorkstreamStatus,
 } from '@/types'
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Input, Loading, Select } from '@/components/ui'
+import { TabSaveControls } from '@/components/TabSaveControls'
 import { ProjectForm } from '@/features/projects/ProjectForm'
 import { WorkstreamForm } from '@/features/projects/WorkstreamForm'
 import { DeliverableTasksModal } from '@/features/projects/DeliverableTasksModal'
@@ -157,6 +158,15 @@ export function ProjectsPage() {
 
   if (!projects || !workstreams || !suppliers || !quotations || !pets || !pos) return <Loading />
 
+  const projectsFingerprint = JSON.stringify({
+    projects: projects.filter((p) => !p.isNonNpi),
+    workstreams,
+    tasks: tasks ?? [],
+    quotations,
+    pets,
+    pos,
+  })
+
   return (
     <div className="space-y-4">
       {/* Filters & Action Bar */}
@@ -164,9 +174,18 @@ export function ProjectsPage() {
         <Input placeholder="Search HRS, device, deliverable, MPN, PO…" value={search} onChange={(e) => setSearch(e.target.value)} className="!w-72" />
         <Select className="!w-36" value={hwType} onChange={(e) => setHwType(e.target.value)} options={[{ value: '', label: 'All HW types' }, ...HW_TYPES]} />
         <Select className="!w-40" value={status} onChange={(e) => setStatus(e.target.value)} options={[{ value: '', label: 'All statuses' }, ...ACTIVE_PROJECT_STATUSES]} />
-        <Button variant="primary" className="ml-auto" onClick={() => { setEditing(undefined); setFormOpen(true) }}>
-          <Plus className="h-4 w-4" /> Create Project
-        </Button>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <Button onClick={() => { setEditing(undefined); setFormOpen(true) }}>
+            <Plus className="h-4 w-4" /> Create Project
+          </Button>
+          <TabSaveControls
+            tabKey="projects"
+            tabLabel="Projects"
+            buttonLabel="Save Projects"
+            fingerprint={projectsFingerprint}
+            currentPathPrefix="/projects"
+          />
+        </div>
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}

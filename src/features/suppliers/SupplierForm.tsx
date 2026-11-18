@@ -1,26 +1,18 @@
 import { useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
-import { HARDWARE_CATEGORIES, type Supplier, type SupplierContact } from '@/types'
-import { createSupplier, emptySupplier, getSupplierContacts, updateSupplier, type SupplierInput } from '@/services/supplierService'
+import { Link } from 'react-router-dom'
+import { Plus, Trash2, X } from 'lucide-react'
+import type { Supplier, SupplierContact } from '@/types'
+import {
+  createSupplier,
+  emptySupplier,
+  getSupplierContacts,
+  getSupplierDeliverables,
+  updateSupplier,
+  type SupplierInput,
+} from '@/services/supplierService'
+import { loadDeliverableTemplates } from '@/services/deliverableTemplateService'
 import { errorMessage } from '@/utils/validation'
-import { Button, Field, FormError, Input, Modal, Select, Textarea } from '@/components/ui'
-
-const PRESET_CATEGORIES = HARDWARE_CATEGORIES.filter((c) => c !== 'Others') as readonly string[]
-
-function parseSupplierCategory(rawCategory?: string): { select: string; custom: string } {
-  if (!rawCategory) return { select: 'PCB', custom: '' }
-  if (PRESET_CATEGORIES.includes(rawCategory)) {
-    return { select: rawCategory, custom: '' }
-  }
-  const match = rawCategory.match(/^Others\s*\((.+)\)$/i)
-  if (match) {
-    return { select: 'Others', custom: match[1].trim() }
-  }
-  if (rawCategory === 'Others' || rawCategory === 'Other') {
-    return { select: 'Others', custom: '' }
-  }
-  return { select: 'Others', custom: rawCategory }
-}
+import { Button, Field, FormError, Input, Modal } from '@/components/ui'
 
 export function SupplierForm({ open, supplier, onClose }: { open: boolean; supplier?: Supplier; onClose: () => void }) {
   return (
@@ -31,16 +23,18 @@ export function SupplierForm({ open, supplier, onClose }: { open: boolean; suppl
 }
 
 function Body({ supplier, onClose }: { supplier?: Supplier; onClose: () => void }) {
-  const initialCat = parseSupplierCategory(supplier?.category)
-  const [categorySelect, setCategorySelect] = useState<string>(initialCat.select)
-  const [customHardware, setCustomHardware] = useState<string>(initialCat.custom)
+  const availableTemplates = loadDeliverableTemplates().map((t) => t.name)
+
+  const [selectedDeliverables, setSelectedDeliverables] = useState<string[]>(() =>
+    supplier ? getSupplierDeliverables(supplier) : [],
+  )
 
   const [form, setForm] = useState<SupplierInput>(() => {
     if (supplier) {
       const existingContacts = getSupplierContacts(supplier)
       return {
         ...supplier,
-        contacts: existingContacts.length > 0 ? existingContacts : [{ contactPerson: '', phone: '', email: '' }],
+        contacts: existingContacts.length > 0 ? existingContacts : [{ contactPerson: '', role: '', phone: '', email: '' }],
       }
     }
     return emptySupplier()
@@ -51,7 +45,7 @@ function Body({ supplier, onClose }: { supplier?: Supplier; onClose: () => void 
 
   const contacts: SupplierContact[] = form.contacts && form.contacts.length > 0
     ? form.contacts
-    : [{ contactPerson: '', phone: '', email: '' }]
+    : [{ contactPerson: '', role: '', phone: '', email: '' }]
 
   function updateContactRow(idx: number, field: keyof SupplierContact, value: string) {
     const next = contacts.map((c, i) => (i === idx ? { ...c, [field]: value } : c))
@@ -59,29 +53,41 @@ function Body({ supplier, onClose }: { supplier?: Supplier; onClose: () => void 
   }
 
   function addContactRow() {
-    set('contacts', [...contacts, { contactPerson: '', phone: '', email: '' }])
+    set('contacts', [...contacts, { contactPerson: '', role: '', phone: '', email: '' }])
   }
 
   function removeContactRow(idx: number) {
     if (contacts.length <= 1) {
-      set('contacts', [{ contactPerson: '', phone: '', email: '' }])
+      set('contacts', [{ contactPerson: '', role: '', phone: '', email: '' }])
       return
     }
     set('contacts', contacts.filter((_, i) => i !== idx))
   }
 
+  function addDeliverable(name: string) {
+    setSelectedDeliverables((prev) => (prev.includes(name) ? prev : [...prev, name]))
+  }
+
+  function removeDeliverable(name: string) {
+    setSelectedDeliverables((prev) => prev.filter((d) => d !== name))
+  }
+
+  const allDeliverableChoices = Array.from(new Set([...availableTemplates, ...selectedDeliverables]))
+  const unselectedDeliverables = allDeliverableChoices.filter((d) => !selectedDeliverables.includes(d))
+
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    if (categorySelect === 'Others' && !customHardware.trim()) {
-      setError('Please specify the hardware name for "Others".')
+    if (selectedDeliverables.length === 0) {
+      setError('Please select at least one deliverable that this supplier can deliver.')
       return
     }
-    const finalCategory = categorySelect === 'Others' ? `Others (${customHardware.trim()})` : categorySelect
     try {
       const payload: SupplierInput = {
         ...form,
-        category: finalCategory,
+        deliverables: selectedDeliverables,
+        category: selectedDeliverables.join(', '),
+        remarks: '',
         contacts,
       }
       if (supplier) await updateSupplier(supplier.id, payload)
@@ -96,42 +102,17 @@ function Body({ supplier, onClose }: { supplier?: Supplier; onClose: () => void 
     <form onSubmit={submit} className="space-y-4">
       <FormError message={error} />
 
-      <div className="grid sm:grid-cols-3 gap-3">
+      <div className="grid sm:grid-cols-2 gap-3">
         <Field label="Supplier Name" required>
           <Input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Nova Circuits Pte Ltd" />
         </Field>
-        <Field label="Category (Deliverable / Hardware)" required>
-          <Select
-            options={HARDWARE_CATEGORIES}
-            value={categorySelect}
-            onChange={(e) => setCategorySelect(e.target.value)}
-          />
+        <Field label="Location">
+          <Input value={form.location} onChange={(e) => set('location', e.target.value)} placeholder="e.g. Singapore, Penang" />
         </Field>
-        {categorySelect === 'Others' ? (
-          <Field label="Specify Hardware Name (Others)" required>
-            <Input
-              value={customHardware}
-              onChange={(e) => setCustomHardware(e.target.value)}
-              placeholder="Write hardware name…"
-            />
-          </Field>
-        ) : (
-          <Field label="Location">
-            <Input value={form.location} onChange={(e) => set('location', e.target.value)} placeholder="e.g. Singapore, Penang" />
-          </Field>
-        )}
       </div>
 
-      {categorySelect === 'Others' && (
-        <div className="grid sm:grid-cols-2 gap-3">
-          <Field label="Location">
-            <Input value={form.location} onChange={(e) => set('location', e.target.value)} placeholder="e.g. Singapore, Penang" />
-          </Field>
-        </div>
-      )}
-
-      {/* Supplier Contact Persons Table (Single-row per contact + Add Row button) */}
-      <div className="rounded-md border border-slate-200 bg-slate-50/60 p-3 space-y-2">
+      {/* Supplier Contact Persons Table */}
+      <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2">
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-slate-700 uppercase tracking-wide">Supplier Contacts</span>
           <Button type="button" size="sm" onClick={addContactRow}>
@@ -139,12 +120,13 @@ function Body({ supplier, onClose }: { supplier?: Supplier; onClose: () => void 
           </Button>
         </div>
 
-        <div className="overflow-x-auto rounded border border-slate-200 bg-white">
+        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
           <table className="w-full text-xs">
             <thead className="bg-slate-100 text-slate-600 text-left">
               <tr>
                 <th className="px-2.5 py-1.5 font-semibold w-8">#</th>
                 <th className="px-2.5 py-1.5 font-semibold">Contact Person</th>
+                <th className="px-2.5 py-1.5 font-semibold">Role</th>
                 <th className="px-2.5 py-1.5 font-semibold">Phone Number</th>
                 <th className="px-2.5 py-1.5 font-semibold">Email</th>
                 <th className="px-2 py-1.5 font-semibold w-10 text-center"></th>
@@ -159,6 +141,14 @@ function Body({ supplier, onClose }: { supplier?: Supplier; onClose: () => void 
                       value={c.contactPerson}
                       onChange={(e) => updateContactRow(idx, 'contactPerson', e.target.value)}
                       placeholder="Contact name…"
+                      className="!py-1.5 text-xs"
+                    />
+                  </td>
+                  <td className="p-1.5">
+                    <Input
+                      value={c.role ?? ''}
+                      onChange={(e) => updateContactRow(idx, 'role', e.target.value)}
+                      placeholder="e.g. Sales, Technical Support…"
                       className="!py-1.5 text-xs"
                     />
                   </td>
@@ -196,9 +186,66 @@ function Body({ supplier, onClose }: { supplier?: Supplier; onClose: () => void 
         </div>
       </div>
 
-      <Field label="Remarks">
-        <Textarea value={form.remarks} onChange={(e) => set('remarks', e.target.value)} />
-      </Field>
+      {/* What Supplier Can Deliver (Deliverables Selector) */}
+      <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold text-slate-700 uppercase tracking-wide">
+            What Supplier Can Deliver <span className="text-red-500">*</span>
+          </span>
+          <span className="text-[11px] text-slate-500">
+            Need a new deliverable? Create it in the{' '}
+            <Link to="/deliverables" className="text-primary font-semibold hover:underline">
+              Deliverables
+            </Link>{' '}
+            tab.
+          </span>
+        </div>
+
+        {/* Selected Deliverables */}
+        <div className="rounded-lg border border-slate-200 bg-white p-2.5 min-h-[44px]">
+          <p className="text-[11px] font-medium text-slate-400 mb-1.5">Selected Deliverables (Supplier Capabilities):</p>
+          {selectedDeliverables.length === 0 ? (
+            <p className="text-xs text-slate-400 italic">Click any +Deliverable button below to add what this supplier can make.</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {selectedDeliverables.map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => removeDeliverable(d)}
+                  title={`Remove ${d}`}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-primary text-white px-3 py-1 text-xs font-semibold shadow-sm hover:bg-primary-hover transition-colors"
+                >
+                  <span>{d}</span>
+                  <X className="h-3 w-3" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Available +Deliverable Buttons */}
+        <div>
+          <p className="text-[11px] font-medium text-slate-500 mb-1.5">Available Deliverables (Click to Add):</p>
+          {unselectedDeliverables.length === 0 ? (
+            <p className="text-xs text-slate-400">All available deliverables have been added.</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {unselectedDeliverables.map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => addDeliverable(d)}
+                  className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:border-primary hover:text-primary hover:bg-primary-soft transition-colors"
+                >
+                  <Plus className="h-3 w-3" />
+                  <span>{d}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
 
       <div className="flex justify-end gap-2 pt-1">
         <Button type="button" onClick={onClose}>Cancel</Button>

@@ -53,6 +53,11 @@ export class NpiDatabase extends Dexie {
 
 export const db = new NpiDatabase()
 
+// Request persistent browser storage so IndexedDB data is never evicted automatically
+if (typeof navigator !== 'undefined' && navigator.storage?.persist) {
+  void navigator.storage.persist().catch(() => {})
+}
+
 // One list of every table name, used by backup / reset / export code.
 export const TABLE_NAMES = [
   'projects', 'workstreams', 'suppliers', 'projectSuppliers', 'tasks', 'milestones',

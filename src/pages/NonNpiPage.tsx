@@ -30,6 +30,7 @@ import {
   Textarea,
 } from '@/components/ui'
 import { InlineStatusSelect } from './ProjectsPage'
+import { TabSaveControls } from '@/components/TabSaveControls'
 import { TaskForm } from '@/features/tasks/TaskForm'
 import { DeadlineBadge, isOverdueTask } from '@/features/tasks/TaskTable'
 import { createProject, deleteProject, emptyProject, updateProject, type ProjectInput } from '@/services/projectService'
@@ -110,6 +111,12 @@ export function NonNpiPage() {
 
   if (!projects || !tasks) return <Loading />
 
+  const nonNpiProjectIds = new Set(projects.filter((p) => !!p.isNonNpi).map((p) => p.id))
+  const nonNpiFingerprint = JSON.stringify({
+    projects: projects.filter((p) => !!p.isNonNpi),
+    tasks: tasks.filter((t) => nonNpiProjectIds.has(t.projectId)),
+  })
+
   const tabCls = (active: boolean) =>
     `px-3 py-2 text-sm border-b-2 -mb-px ${active ? 'border-primary text-primary font-medium' : 'border-transparent text-slate-500 hover:text-slate-800'}`
 
@@ -153,16 +160,23 @@ export function NonNpiPage() {
           onChange={(e) => setStatus(e.target.value)}
           options={[{ value: '', label: 'All statuses' }, ...ACTIVE_PROJECT_STATUSES]}
         />
-        <Button
-          variant="primary"
-          className="ml-auto"
-          onClick={() => {
-            setEditingWork(undefined)
-            setWorkModalOpen(true)
-          }}
-        >
-          <Plus className="h-4 w-4" /> Create Non-NPI Work
-        </Button>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <Button
+            onClick={() => {
+              setEditingWork(undefined)
+              setWorkModalOpen(true)
+            }}
+          >
+            <Plus className="h-4 w-4" /> Create Non-NPI Work
+          </Button>
+          <TabSaveControls
+            tabKey="non-npi"
+            tabLabel="Non-NPI Work"
+            buttonLabel="Save Non-NPI Work"
+            fingerprint={nonNpiFingerprint}
+            currentPathPrefix="/non-npi"
+          />
+        </div>
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}

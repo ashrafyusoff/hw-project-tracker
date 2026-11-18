@@ -1,7 +1,7 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useTable } from '@/hooks/useTable'
 import {
-  HARDWARE_CATEGORIES,
   HARDWARE_STATUSES,
   type PetRecord,
   type PoRecord,
@@ -10,8 +10,9 @@ import {
   type Workstream,
 } from '@/types'
 import { createWorkstream, emptyWorkstream, updateWorkstream, type WorkstreamInput } from '@/services/workstreamService'
+import { getSupplierDeliverables } from '@/services/supplierService'
 import { emptyDeliverableCommercial, saveDeliverableCommercial, type DeliverableCommercialInput } from '@/services/commercialService'
-import { createTasksFromDeliverableTemplate, findTemplateForDeliverable } from '@/services/deliverableTemplateService'
+import { createTasksFromDeliverableTemplate, findTemplateForDeliverable, loadDeliverableTemplates } from '@/services/deliverableTemplateService'
 import { todayStr } from '@/utils/helpers'
 import { errorMessage } from '@/utils/validation'
 import { Button, Field, FormError, Input, Loading, Modal, Select, Textarea } from '@/components/ui'
@@ -71,19 +72,6 @@ export function WorkstreamForm({
   )
 }
 
-function normalizeCategory(c?: string): string {
-  if (!c) return 'PCB'
-  if (HARDWARE_CATEGORIES.includes(c as (typeof HARDWARE_CATEGORIES)[number])) return c
-  const lower = c.toLowerCase()
-  if (lower.includes('probe card')) return 'Probe Card'
-  if (lower.includes('probe head')) return 'Probe Head'
-  if (lower.includes('pcb')) return 'PCB'
-  if (lower.includes('socket')) return 'Socket'
-  if (lower.includes('handler')) return 'Handler Kit'
-  if (lower.includes('stiffener')) return 'Stiffener'
-  return 'Others'
-}
-
 function normalizeHardwareStatus(po?: PoRecord): string {
   const raw = po?.deliveryStatus || po?.hardwareDelivery || ''
   if (HARDWARE_STATUSES.includes(raw as (typeof HARDWARE_STATUSES)[number])) return raw
@@ -113,14 +101,17 @@ function Body({
   suppliers: Supplier[]
   onClose: () => void
 }) {
+  const templateNames = loadDeliverableTemplates().map((t) => t.name)
   const [form, setForm] = useState<WorkstreamInput>(() => {
     if (workstream) {
-      const cat = normalizeCategory(workstream.category)
-      const customName = cat === 'Others' && workstream.name !== 'Others' ? workstream.name : ''
+      const current =
+        workstream.category === 'Others' && workstream.name && workstream.name !== 'Others'
+          ? workstream.name
+          : workstream.name || workstream.category
       return {
         ...workstream,
-        category: cat,
-        name: cat === 'Others' ? customName : cat,
+        category: current,
+        name: current,
         mpn: workstream.mpn ?? '',
         supplierId: workstream.supplierId || existingQ?.supplierId || existingPet?.supplierId || existingPo?.supplierId || '',
         remarks: workstream.remarks || existingPo?.remarks || existingPet?.remarks || existingQ?.remarks || '',
@@ -129,7 +120,7 @@ function Body({
         actualDate: '',
       }
     }
-    return emptyWorkstream(projectId)
+    return { ...emptyWorkstream(projectId), category: '', name: '' }
   })
 
   const [comm, setComm] = useState<DeliverableCommercialInput>(() => ({
@@ -140,7 +131,7 @@ function Body({
     petReference: existingPet?.reference ?? '',
     poId: existingPo?.id,
     poNumber: existingPo?.number ?? '',
-    poIssueDate: existingPo?.issueDate ?? '',
+    poIssueDate: '',
     poAmount: existingPo?.amount ?? 0,
     poCurrency: existingPo?.currency ?? 'USD',
     expectedDelivery: existingPo?.expectedDelivery ?? '',
@@ -156,21 +147,49 @@ function Body({
   const set = <K extends keyof WorkstreamInput>(k: K, v: WorkstreamInput[K]) => setForm((f) => ({ ...f, [k]: v }))
   const setC = <K extends keyof DeliverableCommercialInput>(k: K, v: DeliverableCommercialInput[K]) => setComm((c) => ({ ...c, [k]: v }))
 
-  const isOthers = form.category === 'Others'
+  // Deliverable choices come from the Deliverables tab; keep the current one selectable when editing legacy data.
+  const deliverableOptions = Array.from(new Set([...templateNames, ...(workstream && form.name ? [form.name] : [])]))
+
+  // Filter suppliers to only those with "+Deliverable" matching the selected deliverable
+  const matchingSuppliers = form.name.trim()
+    ? suppliers.filter((s) =>
+        getSupplierDeliverables(s).some((d) => d.toLowerCase() === form.name.trim().toLowerCase()) ||
+        (workstream && s.id === form.supplierId),
+      )
+    : []
+
+  function handleDeliverableSelect(val: string) {
+    setForm((f) => {
+      const canCurrentDeliver =
+        val &&
+        suppliers.some(
+          (s) =>
+            s.id === f.supplierId &&
+            getSupplierDeliverables(s).some((d) => d.toLowerCase() === val.toLowerCase()),
+        )
+      return {
+        ...f,
+        name: val,
+        category: val,
+        supplierId: canCurrentDeliver ? f.supplierId : '',
+      }
+    })
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    if (isOthers && !form.name.trim()) {
-      setError('Please enter the deliverable name for "Others".')
+    if (!form.name.trim()) {
+      setError('Please select a deliverable. Create it in the Deliverables tab first if it is not listed.')
       return
     }
     setSaving(true)
     try {
-      const deliverableName = isOthers ? form.name.trim() : form.category
+      const deliverableName = form.name.trim()
       const payload: WorkstreamInput = {
         ...form,
         name: deliverableName,
+        category: deliverableName,
         mpn: (form.mpn ?? '').trim(),
         startDate: '',
         targetDate: '',
@@ -223,28 +242,18 @@ function Body({
         <div className="grid sm:grid-cols-3 gap-3">
           <Field label="Deliverable" required>
             <Select
-              options={HARDWARE_CATEGORIES}
-              value={form.category}
-              onChange={(e) => {
-                const val = e.target.value
-                setForm((f) => ({
-                  ...f,
-                  category: val,
-                  name: val === 'Others' ? (f.category === 'Others' ? f.name : '') : val,
-                }))
-              }}
+              options={[
+                { value: '', label: 'Select deliverable first…' },
+                ...deliverableOptions.map((d) => ({ value: d, label: d })),
+              ]}
+              value={form.name}
+              onChange={(e) => handleDeliverableSelect(e.target.value)}
             />
+            <span className="mt-1 block text-[11px] leading-snug text-slate-500">
+              Deliverable not listed? Create it first in the{' '}
+              <Link to="/deliverables" className="font-semibold text-primary hover:underline">Deliverables</Link> tab.
+            </span>
           </Field>
-
-          {isOthers && (
-            <Field label="Specify Deliverable (Others)" required>
-              <Input
-                value={form.name}
-                onChange={(e) => set('name', e.target.value)}
-                placeholder="Write deliverable name…"
-              />
-            </Field>
-          )}
 
           <Field label="MPN">
             <Input
@@ -256,9 +265,16 @@ function Body({
 
           <Field label="Supplier">
             <Select
+              disabled={!form.name.trim()}
               value={form.supplierId}
               onChange={(e) => set('supplierId', e.target.value)}
-              options={[{ value: '', label: '— None —' }, ...suppliers.map((s) => ({ value: s.id, label: s.name }))]}
+              options={
+                !form.name.trim()
+                  ? [{ value: '', label: '— Select deliverable first —' }]
+                  : matchingSuppliers.length === 0
+                    ? [{ value: '', label: `— No supplier with +${form.name} —` }]
+                    : [{ value: '', label: '— None —' }, ...matchingSuppliers.map((s) => ({ value: s.id, label: s.name }))]
+              }
             />
           </Field>
 
@@ -279,7 +295,7 @@ function Body({
                 checked={autoCreateTasks}
                 onChange={(e) => setAutoCreateTasks(e.target.checked)}
               />
-              Auto-create {findTemplateForDeliverable(isOthers && form.name.trim() ? form.name.trim() : form.category).length} sub-tasks from Deliverables template
+              Auto-create {findTemplateForDeliverable(form.name.trim()).length} tasks from the Deliverables template
             </label>
             {autoCreateTasks && (
               <label className="inline-flex items-center gap-1.5 text-slate-600">
@@ -316,12 +332,9 @@ function Body({
       {/* Stage 3: PO & Delivery Tracking */}
       <div className="rounded-md border border-slate-200 p-3 space-y-3">
         <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide">3. Purchase Order (PO) & Hardware Delivery Tracking</p>
-        <div className="grid sm:grid-cols-3 gap-3">
+        <div className="grid sm:grid-cols-2 gap-3">
           <Field label="PO Number">
             <Input value={comm.poNumber} onChange={(e) => setC('poNumber', e.target.value)} placeholder="PO-4500711" />
-          </Field>
-          <Field label="PO Issue Date">
-            <Input type="date" value={comm.poIssueDate} onChange={(e) => setC('poIssueDate', e.target.value)} />
           </Field>
           <div className="grid grid-cols-2 gap-2">
             <Field label="PO Amount">

@@ -4,6 +4,7 @@
 
 :root {
   color-scheme: light;
+  font-size: 14px;
 }
 
 html.dark {
@@ -129,11 +130,20 @@ html.dark .bg-slate-200 {
   background-color: #334155 !important;
 }
 html.dark .hover\:bg-slate-50:hover,
+html.dark .hover\:bg-slate-50\/50:hover,
+html.dark .hover\:bg-slate-50\/60:hover,
+html.dark .hover\:bg-slate-50\/70:hover,
+html.dark .hover\:bg-slate-50\/75:hover,
 html.dark .hover\:bg-slate-50\/80:hover,
 html.dark .hover\:bg-slate-100:hover,
+html.dark .hover\:bg-slate-100\/70:hover,
 html.dark .hover\:bg-slate-200:hover,
+html.dark .hover\:bg-slate-200\/40:hover,
+html.dark .hover\:bg-slate-200\/50:hover,
+html.dark .hover\:bg-slate-200\/60:hover,
+html.dark .hover\:bg-slate-200\/70:hover,
 html.dark .group:hover .group-hover\:bg-slate-200\/70 {
-  background-color: #2d3e56 !important;
+  background-color: #243247 !important;
 }
 html.dark .hover\:bg-blue-50\/40:hover,
 html.dark .hover\:bg-blue-50\/70:hover {
@@ -310,6 +320,11 @@ html.dark textarea {
   background-color: #0f172a !important;
   color: #f1f5f9 !important;
   border-color: #334155 !important;
+}
+
+html.dark input.weeks-pill-input {
+  background-color: transparent !important;
+  border-color: transparent !important;
 }
 
 html.dark .bg-primary-soft {

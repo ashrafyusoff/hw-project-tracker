@@ -5,6 +5,7 @@ import { Archive, ArrowLeft, Calendar, Cpu, FileSpreadsheet, GitBranch, Layers, 
 import { db } from '@/database/db'
 import { isArchivedStatus, type Milestone, type Supplier, type Task, type Workstream } from '@/types'
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Loading, Select } from '@/components/ui'
+import { TabSaveControls } from '@/components/TabSaveControls'
 import { ProjectForm } from '@/features/projects/ProjectForm'
 import { WorkstreamForm } from '@/features/projects/WorkstreamForm'
 import { DeliverableTasksModal } from '@/features/projects/DeliverableTasksModal'
@@ -68,12 +69,14 @@ export function ProjectDetailPage() {
   const [searchParams] = useSearchParams()
   const data = useProjectData(id)
   const [tab, setTab] = useState<Tab>(() =>
-    searchParams.get('tab') === 'deliverables' ? 'Deliverables & Commercial' : 'Overview',
+    searchParams.get('tab') === 'deliverables' ? 'Deliverables & Commercial' : searchParams.get('tab') === 'tasks' ? 'Tasks' : 'Overview',
   )
 
   useEffect(() => {
     if (searchParams.get('tab') === 'deliverables') {
       setTab('Deliverables & Commercial')
+    } else if (searchParams.get('tab') === 'tasks') {
+      setTab('Tasks')
     }
   }, [searchParams])
   const [editOpen, setEditOpen] = useState(false)
@@ -122,6 +125,16 @@ export function ProjectDetailPage() {
   })[t as string]
 
   const archived = isArchivedStatus(p.status)
+  const detailFingerprint = JSON.stringify({
+    project: p,
+    workstreams,
+    tasks,
+    milestones,
+    quotations: data.quotations,
+    pets: data.pets,
+    pos: data.pos,
+    links: data.links,
+  })
 
   return (
     <div className="space-y-4">
@@ -140,12 +153,21 @@ export function ProjectDetailPage() {
           </div>
           {p.atePlatform && <p className="text-sm text-slate-500">ATE Platform: {p.atePlatform}</p>}
         </div>
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           <Button onClick={() => run(() => exportSingleProjectReport(p.id))}>
             <FileSpreadsheet className="h-4 w-4 text-emerald-600" /> Export to Excel
           </Button>
           {!archived && <Button onClick={() => setEditOpen(true)}><Pencil className="h-4 w-4" /> Edit</Button>}
           <Button onClick={() => setDeleteOpen(true)}><Trash2 className="h-4 w-4 text-red-500" /> Delete</Button>
+          {!archived && (
+            <TabSaveControls
+              tabKey={`project-${p.id}`}
+              tabLabel={`Project ${p.code}`}
+              buttonLabel="Save Project"
+              fingerprint={detailFingerprint}
+              currentPathPrefix={`/projects/${p.id}`}
+            />
+          )}
         </div>
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}

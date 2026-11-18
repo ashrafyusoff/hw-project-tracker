@@ -6,10 +6,10 @@ import { cn } from '@/utils/helpers'
 // ---------- Button ----------
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger'
 const variants: Record<Variant, string> = {
-  primary: 'bg-primary text-white hover:bg-primary-hover shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_2px_6px_rgba(37,99,235,0.25)]',
-  secondary: 'liquid-glass-pill text-slate-700 hover:bg-white/95',
-  ghost: 'text-slate-600 hover:bg-slate-200/50',
-  danger: 'bg-red-600 text-white hover:bg-red-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_2px_6px_rgba(220,38,38,0.25)]',
+  primary: 'bg-primary border border-primary text-white hover:bg-primary-hover shadow-sm',
+  secondary: 'liquid-glass-pill text-slate-700 hover:bg-slate-200/60 shadow-sm',
+  ghost: 'border border-transparent text-slate-600 hover:bg-slate-200/50',
+  danger: 'bg-red-600 border border-red-600 text-white hover:bg-red-700 shadow-sm',
 }
 export function Button({ variant = 'secondary', size = 'md', className, ...props }:
   ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: 'sm' | 'md' }) {
@@ -17,8 +17,8 @@ export function Button({ variant = 'secondary', size = 'md', className, ...props
     <button
       {...props}
       className={cn(
-        'inline-flex items-center justify-center gap-1.5 rounded-xl font-medium transition-all duration-150 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none',
-        size === 'sm' ? 'h-8 px-3 text-xs' : 'h-9 px-3.5 text-sm',
+        'inline-flex h-8 items-center justify-center gap-1.5 rounded-full px-3.5 text-xs font-semibold leading-none whitespace-nowrap transition-all duration-150 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none',
+        size === 'sm' ? 'h-8 px-3.5 text-xs' : 'h-8 px-3.5 text-xs',
         variants[variant], className,
       )}
     />
@@ -56,12 +56,12 @@ export function Card({ title, action, children, className }: { title?: string; a
   return (
     <section className={cn('rounded-2xl liquid-glass overflow-hidden', className)}>
       {title && (
-        <header className="flex items-center justify-between px-4 py-3 liquid-card-header">
+        <header className="flex items-center justify-between px-3.5 py-2.5 liquid-card-header">
           <h2 className="text-sm font-semibold text-slate-800 tracking-tight">{title}</h2>
           {action}
         </header>
       )}
-      <div className="p-4">{children}</div>
+      <div className="p-3">{children}</div>
     </section>
   )
 }
@@ -86,7 +86,8 @@ export function Loading() {
 }
 
 // ---------- Form fields ----------
-const inputCls = 'w-full rounded-xl border border-slate-200/90 bg-white/85 px-3 py-2 text-sm shadow-[inset_0_1px_2px_rgba(15,23,42,0.03)] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-shadow'
+const inputCls = 'w-full h-8 rounded-full border border-slate-200/90 bg-white/90 px-3.5 text-xs shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-shadow'
+const textareaCls = 'w-full rounded-2xl border border-slate-200/90 bg-white/90 px-3.5 py-2 text-xs shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-shadow'
 export function Field({ label, children, required }: { label: string; children: ReactNode; required?: boolean }) {
   return (
     <label className="block">
@@ -96,7 +97,7 @@ export function Field({ label, children, required }: { label: string; children: 
   )
 }
 export const Input = (p: InputHTMLAttributes<HTMLInputElement>) => <input {...p} className={cn(inputCls, p.className)} />
-export const Textarea = (p: TextareaHTMLAttributes<HTMLTextAreaElement>) => <textarea rows={3} {...p} className={cn(inputCls, p.className)} />
+export const Textarea = (p: TextareaHTMLAttributes<HTMLTextAreaElement>) => <textarea rows={3} {...p} className={cn(textareaCls, p.className)} />
 export function Select({ options, ...p }: SelectHTMLAttributes<HTMLSelectElement> & { options: readonly (string | { value: string; label: string })[] }) {
   return (
     <select {...p} className={cn(inputCls, p.className)}>

@@ -1,16 +1,19 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowDown, ArrowUp, Calendar, Check, Layers, Plus, RotateCcw, Save, Trash2 } from 'lucide-react'
-import { HARDWARE_CATEGORIES, PRIORITIES, type Priority } from '@/types'
+import { Calendar, Check, GripVertical, Layers, Plus, RotateCcw, Save, Trash2 } from 'lucide-react'
+import { PRIORITIES, type Priority } from '@/types'
 import { Badge, Button, Card, EmptyState, Input, Modal } from '@/components/ui'
 import {
+  addWorkingDays,
   buildDefaultSubTasks,
   computeTemplateSchedule,
   loadDeliverableTemplates,
+  parseYmdLocal,
   saveDeliverableTemplates,
   type DeliverableSubTaskTemplate,
   type DeliverableTemplate,
 } from '@/services/deliverableTemplateService'
+import { getIsoWeek } from '@/features/overview/WorkWeekCalendar'
 import { cn, newId, nowIso, todayStr } from '@/utils/helpers'
 
 const PRIORITY_BAR: Record<Priority, string> = {
@@ -26,10 +29,12 @@ export function DeliverablesPage() {
   const [selectedId, setSelectedId] = useState<string>(() => loadDeliverableTemplates()[0]?.id ?? '')
   const [previewStart, setPreviewStart] = useState<string>(todayStr())
   const [newName, setNewName] = useState('')
-  const [newCategory, setNewCategory] = useState<string>('PCB')
+  const [createError, setCreateError] = useState('')
   const [isDirty, setIsDirty] = useState(false)
   const [savedToast, setSavedToast] = useState('')
   const [pendingNav, setPendingNav] = useState<{ type: 'route'; to: string } | { type: 'select'; id: string } | null>(null)
+  const [draggingSubId, setDraggingSubId] = useState('')
+  const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map())
 
   const selected = templates.find((t) => t.id === selectedId) ?? templates[0] ?? null
 
@@ -91,11 +96,20 @@ export function DeliverablesPage() {
 
   function handleCreateTemplate(e: React.FormEvent) {
     e.preventDefault()
-    const name = newName.trim() || newCategory
+    const name = newName.trim()
+    if (!name) {
+      setCreateError('Please enter a deliverable name.')
+      return
+    }
+    if (templates.some((t) => t.name.toLowerCase() === name.toLowerCase())) {
+      setCreateError(`"${name}" already exists.`)
+      return
+    }
+    setCreateError('')
     const item: DeliverableTemplate = {
       id: newId(),
       name,
-      category: newCategory,
+      category: name,
       subTasks: buildDefaultSubTasks(),
       updatedAt: nowIso(),
     }
@@ -132,16 +146,56 @@ export function DeliverablesPage() {
     updateSelectedDraft((t) => ({ ...t, subTasks: [...t.subTasks, nextSub] }))
   }
 
-  function moveSubTask(index: number, direction: -1 | 1) {
+  /** Hold-and-slide reordering: move a task to the position currently under the pointer. */
+  function moveSubTaskTo(subId: string, toIdx: number) {
     if (!selected) return
-    const targetIdx = index + direction
-    if (targetIdx < 0 || targetIdx >= selected.subTasks.length) return
-    updateSelectedDraft((t) => {
-      const list = [...t.subTasks]
-      const [moved] = list.splice(index, 1)
-      list.splice(targetIdx, 0, moved)
-      return { ...t, subTasks: list }
-    })
+    const from = selected.subTasks.findIndex((s) => s.id === subId)
+    if (from < 0 || from === toIdx) return
+    const selectedTemplateId = selected.id
+    setTemplates((prev) =>
+      prev.map((t) => {
+        if (t.id !== selectedTemplateId) return t
+        const list = [...t.subTasks]
+        const idx = list.findIndex((s) => s.id === subId)
+        if (idx < 0) return t
+        const [moved] = list.splice(idx, 1)
+        list.splice(toIdx, 0, moved)
+        return { ...t, subTasks: list, updatedAt: nowIso() }
+      }),
+    )
+    setIsDirty(true)
+  }
+
+  function rowIndexAtPointer(clientY: number): number {
+    if (!selected) return -1
+    const ids = selected.subTasks.map((s) => s.id)
+    let result = -1
+    for (let i = 0; i < ids.length; i++) {
+      const el = rowRefs.current.get(ids[i])
+      if (!el) continue
+      const r = el.getBoundingClientRect()
+      if (clientY < r.top) return result === -1 ? i : result
+      if (clientY <= r.bottom) return i
+      result = i
+    }
+    return result
+  }
+
+  function handleSlidePointerDown(e: React.PointerEvent<HTMLButtonElement>, subId: string) {
+    e.preventDefault()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    setDraggingSubId(subId)
+  }
+
+  function handleSlidePointerMove(e: React.PointerEvent<HTMLButtonElement>) {
+    if (!draggingSubId) return
+    const target = rowIndexAtPointer(e.clientY)
+    if (target >= 0) moveSubTaskTo(draggingSubId, target)
+  }
+
+  function handleSlidePointerEnd(e: React.PointerEvent<HTMLButtonElement>) {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+    setDraggingSubId('')
   }
 
   function updateSubTask(subId: string, patch: Partial<DeliverableSubTaskTemplate>) {
@@ -220,22 +274,11 @@ export function DeliverablesPage() {
                 <label className="block text-xs font-medium text-slate-600 mb-1">Deliverable Name</label>
                 <Input
                   value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  placeholder="e.g. Custom Load Board"
+                  onChange={(e) => { setNewName(e.target.value); setCreateError('') }}
+                  placeholder="e.g. PCB, Socket, Probe Card"
                   className="!py-1.5 !text-xs"
                 />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Category</label>
-                <select
-                  value={newCategory}
-                  onChange={(e) => setNewCategory(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
-                >
-                  {HARDWARE_CATEGORIES.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
+                {createError && <p className="mt-1 text-[11px] text-red-600">{createError}</p>}
               </div>
               <Button type="submit" variant="primary" size="sm" className="w-full">
                 <Plus className="h-3.5 w-3.5" /> Create & Save Deliverable
@@ -264,7 +307,7 @@ export function DeliverablesPage() {
                         <div className="min-w-0">
                           <p className="truncate">{t.name}</p>
                           <p className="text-[10px] text-slate-400 font-normal">
-                            {t.category} · {t.subTasks.length} tasks
+                            {t.subTasks.length} tasks
                           </p>
                         </div>
                       </div>
@@ -328,31 +371,17 @@ export function DeliverablesPage() {
                   </div>
                 }
               >
-                <div className="grid sm:grid-cols-2 gap-3 mb-3">
-                  <div>
-                    <label className="block text-[11px] font-medium text-slate-500 mb-1">Deliverable Name</label>
-                    <Input
-                      value={selected.name}
-                      onChange={(e) => updateSelectedDraft((t) => ({ ...t, name: e.target.value }))}
-                      className="!py-1.5 !text-xs"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-medium text-slate-500 mb-1">Hardware Category</label>
-                    <select
-                      value={selected.category}
-                      onChange={(e) => updateSelectedDraft((t) => ({ ...t, category: e.target.value }))}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    >
-                      {HARDWARE_CATEGORIES.map((c) => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
-                  </div>
+                <div className="mb-3 max-w-sm">
+                  <label className="block text-[11px] font-medium text-slate-500 mb-1">Deliverable Name</label>
+                  <Input
+                    value={selected.name}
+                    onChange={(e) => updateSelectedDraft((t) => ({ ...t, name: e.target.value, category: e.target.value }))}
+                    className="!py-1.5 !text-xs"
+                  />
                 </div>
 
                 <p className="text-xs text-slate-500 mb-2">
-                  Use the Up/Down arrows to rearrange tasks, set working days and dependencies, then click <b>Save Deliverable</b>. Every task created for a deliverable is a real Task (shown in the Tasks tab and on the Overview calendar on its due date).
+                  Hold the grip button and slide a task up or down to rearrange it. Set working days and dependencies, then click <b>Save Deliverable</b>. Each task created for a deliverable is a real Task and appears on the Overview calendar on its due date.
                 </p>
 
                 <div className="overflow-x-auto -mx-4">
@@ -373,28 +402,36 @@ export function DeliverablesPage() {
                       {schedule.map((item, idx) => {
                         const sub = item.subTask
                         return (
-                          <tr key={sub.id} className="border-b border-slate-100 hover:bg-slate-50/70">
+                          <tr
+                            key={sub.id}
+                            ref={(el) => {
+                              if (el) rowRefs.current.set(sub.id, el)
+                              else rowRefs.current.delete(sub.id)
+                            }}
+                            className={cn(
+                              'border-b border-slate-100 hover:bg-slate-50/70 transition-colors',
+                              draggingSubId === sub.id && 'bg-primary-soft shadow-inner',
+                            )}
+                          >
                             <td className="px-2 py-1.5 whitespace-nowrap">
-                              <div className="inline-flex items-center gap-0.5">
+                              <div className="inline-flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onPointerDown={(e) => handleSlidePointerDown(e, sub.id)}
+                                  onPointerMove={handleSlidePointerMove}
+                                  onPointerUp={handleSlidePointerEnd}
+                                  onPointerCancel={handleSlidePointerEnd}
+                                  style={{ touchAction: 'none' }}
+                                  className={cn(
+                                    'p-1 rounded-lg text-slate-500 hover:bg-slate-200/70 select-none',
+                                    draggingSubId === sub.id ? 'cursor-grabbing bg-slate-200' : 'cursor-grab',
+                                  )}
+                                  title="Hold and slide up or down to rearrange"
+                                  aria-label="Hold and slide to rearrange task"
+                                >
+                                  <GripVertical className="h-4 w-4" />
+                                </button>
                                 <span className="w-5 text-center font-semibold text-slate-400">{idx + 1}</span>
-                                <button
-                                  type="button"
-                                  disabled={idx === 0}
-                                  onClick={() => moveSubTask(idx, -1)}
-                                  className="p-1 rounded hover:bg-slate-200/70 text-slate-600 disabled:opacity-30 disabled:pointer-events-none"
-                                  title="Move task up"
-                                >
-                                  <ArrowUp className="h-3.5 w-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={idx === schedule.length - 1}
-                                  onClick={() => moveSubTask(idx, 1)}
-                                  className="p-1 rounded hover:bg-slate-200/70 text-slate-600 disabled:opacity-30 disabled:pointer-events-none"
-                                  title="Move task down"
-                                >
-                                  <ArrowDown className="h-3.5 w-3.5" />
-                                </button>
                               </div>
                             </td>
                             <td className="px-2 py-1.5">
@@ -461,93 +498,219 @@ export function DeliverablesPage() {
                 </div>
               </Card>
 
-              {/* MS Project-style Gantt Chart */}
+              {/* MS Project-style Gantt Chart (Workweek Header, Exact Grid Alignment, Auto Dependency Arrows, Editable Days, No Hover) */}
               <Card
-                title="Gantt Chart Schedule (Working Days)"
+                title="Gantt Chart Schedule (Workweeks & Working Days)"
                 action={
                   <span className="text-xs font-semibold text-slate-600">
-                    Total Lead Time: <span className="text-primary">{totalWorkingDays} working days</span>
+                    Total Lead Time: <span className="text-primary">{totalWorkingDays} working days</span> ({Math.ceil(Math.max(totalWorkingDays, 1) / 5)} workweeks)
                   </span>
                 }
               >
                 {schedule.length === 0 ? (
                   <EmptyState title="No tasks to display" />
-                ) : (
-                  <div className="overflow-x-auto -mx-4 -mb-4 border-t border-slate-200">
-                    <div className="min-w-[760px]">
-                      {/* Gantt Header */}
-                      <div className="grid grid-cols-[260px_1fr] bg-slate-100 border-b border-slate-200 text-[11px] font-semibold text-slate-600">
-                        <div className="px-3 py-2 border-r border-slate-200 flex justify-between">
-                          <span>Task Name</span>
-                          <span>Duration</span>
-                        </div>
-                        <div className="relative flex">
-                          {Array.from({ length: Math.max(totalWorkingDays, 1) }, (_, d) => (
-                            <div
-                              key={d}
-                              className="flex-1 min-w-[22px] text-center py-2 border-r last:border-r-0 border-slate-200/70 text-[10px]"
-                            >
-                              D{d + 1}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
+                ) : (() => {
+                  const DAY_W = 32
+                  const ROW_H = 42
+                  const totalWeeks = Math.max(1, Math.ceil(Math.max(totalWorkingDays, 5) / 5))
+                  const totalDays = totalWeeks * 5
+                  const trackWidth = totalDays * DAY_W
+                  const weekBlocks = Array.from({ length: totalWeeks }, (_, wIdx) => {
+                    const firstDayDate = addWorkingDays(previewStart, wIdx * 5 + 1)
+                    const isoWw = getIsoWeek(parseYmdLocal(firstDayDate))
+                    return {
+                      wIdx,
+                      label: `WW${String(isoWw).padStart(2, '0')} (W${wIdx + 1})`,
+                      startDayNum: wIdx * 5 + 1,
+                    }
+                  })
 
-                      {/* Gantt Rows */}
-                      {schedule.map((item, idx) => {
-                        const sub = item.subTask
-                        const total = Math.max(totalWorkingDays, 1)
-                        const leftPct = (item.startOffsetDays / total) * 100
-                        const widthPct = (Math.max(1, sub.workingDays) / total) * 100
-                        const depIdx = sub.dependsOnId
-                          ? selected.subTasks.findIndex((x) => x.id === sub.dependsOnId)
-                          : -1
-                        return (
-                          <div
-                            key={sub.id}
-                            className="grid grid-cols-[260px_1fr] border-b last:border-b-0 border-slate-100 hover:bg-slate-50/70 items-center"
-                          >
-                            <div className="px-3 py-2 border-r border-slate-200 flex items-center justify-between gap-2 text-xs min-w-0">
-                              <div className="min-w-0">
-                                <span className="font-semibold text-slate-800 truncate block">
-                                  {idx + 1}. {sub.name}
-                                </span>
-                                {depIdx >= 0 && (
-                                  <span className="text-[10px] text-slate-400">
-                                    After #{depIdx + 1} ({selected.subTasks[depIdx]?.name})
-                                  </span>
-                                )}
-                              </div>
-                              <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
-                                {sub.workingDays}d
-                              </span>
+                  return (
+                    <div className="overflow-x-auto -mx-4 -mb-4 border-t border-slate-200">
+                      <div className="inline-block min-w-full align-top">
+                        {/* Gantt Header: Left Task/Days column + Right Workweek & Working Day Header */}
+                        <div className="flex bg-slate-100 border-b border-slate-200 text-[11px] font-semibold text-slate-600">
+                          <div className="w-[270px] shrink-0 px-3 py-2 border-r border-slate-200 flex items-center justify-between">
+                            <span>Task Name</span>
+                            <span>Days (Edit)</span>
+                          </div>
+                          <div className="shrink-0" style={{ width: trackWidth }}>
+                            {/* Row 1: Workweek Headers (5 working days each) */}
+                            <div className="flex border-b border-slate-200">
+                              {weekBlocks.map((wb) => (
+                                <div
+                                  key={wb.wIdx}
+                                  style={{ width: 5 * DAY_W }}
+                                  className="shrink-0 text-center py-1 border-r last:border-r-0 border-slate-300 text-[11px] font-bold text-slate-700"
+                                >
+                                  {wb.label}
+                                </div>
+                              ))}
                             </div>
-
-                            <div className="relative h-9 flex items-center px-1">
-                              {/* Vertical day grid lines */}
-                              <div className="absolute inset-0 flex pointer-events-none">
-                                {Array.from({ length: total }, (_, d) => (
-                                  <div key={d} className="flex-1 border-r last:border-r-0 border-slate-100" />
-                                ))}
-                              </div>
-                              {/* Gantt Bar */}
-                              <div
-                                title={`${sub.name}: ${item.startDate} → Due ${item.dueDate} (${sub.workingDays} working days)`}
-                                style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
-                                className={cn(
-                                  'absolute h-5 rounded border shadow-sm flex items-center px-1.5 text-[10px] font-semibold truncate transition-all',
-                                  PRIORITY_BAR[sub.priority],
-                                )}
-                              >
-                                {sub.workingDays}d
-                              </div>
+                            {/* Row 2: Individual Working Days (D1, D2, ...) aligned 1:1 with bars */}
+                            <div className="flex">
+                              {Array.from({ length: totalDays }, (_, d) => (
+                                <div
+                                  key={d}
+                                  style={{ width: DAY_W }}
+                                  className={cn(
+                                    'shrink-0 text-center py-1 border-r last:border-r-0 text-[10px]',
+                                    (d + 1) % 5 === 0 ? 'border-slate-300 font-semibold' : 'border-slate-200/70',
+                                  )}
+                                >
+                                  D{d + 1}
+                                </div>
+                              ))}
                             </div>
                           </div>
-                        )
-                      })}
+                        </div>
+
+                        {/* Gantt Body: Left Task List (with editable days) + Right Timeline Track with SVG Dependency Arrows */}
+                        <div className="flex">
+                          {/* Left Column: Task Name + Inline Editable Working Days */}
+                          <div className="w-[270px] shrink-0 border-r border-slate-200">
+                            {schedule.map((item, idx) => {
+                              const sub = item.subTask
+                              const depIdx = sub.dependsOnId
+                                ? selected.subTasks.findIndex((x) => x.id === sub.dependsOnId)
+                                : -1
+                              return (
+                                <div
+                                  key={sub.id}
+                                  style={{ height: ROW_H }}
+                                  className="px-3 border-b last:border-b-0 border-slate-100 flex items-center justify-between gap-2 text-xs"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <span className="font-semibold text-slate-800 truncate block leading-tight">
+                                      {idx + 1}. {sub.name}
+                                    </span>
+                                    {depIdx >= 0 && (
+                                      <span className="text-[10px] text-slate-400 truncate block leading-tight">
+                                        → After #{depIdx + 1} ({selected.subTasks[depIdx]?.name})
+                                      </span>
+                                    )}
+                                  </div>
+                                  <label className="inline-flex items-center gap-1 shrink-0">
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      max={365}
+                                      value={sub.workingDays}
+                                      onChange={(e) =>
+                                        updateSubTask(sub.id, {
+                                          workingDays: Math.max(1, Number(e.target.value) || 1),
+                                        })
+                                      }
+                                      className="w-12 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-center text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-primary"
+                                      title="Edit working days directly"
+                                    />
+                                    <span className="text-[10px] font-medium text-slate-500">d</span>
+                                  </label>
+                                </div>
+                              )
+                            })}
+                          </div>
+
+                          {/* Right Timeline Track: Exact DAY_W grid + Overlapping Bars + Automatic SVG Dependency Arrows */}
+                          <div
+                            className="relative shrink-0"
+                            style={{ width: trackWidth, height: schedule.length * ROW_H }}
+                          >
+                            {/* Vertical Working Day & Workweek Grid Lines */}
+                            <div className="absolute inset-0 flex pointer-events-none">
+                              {Array.from({ length: totalDays }, (_, d) => (
+                                <div
+                                  key={d}
+                                  style={{ width: DAY_W }}
+                                  className={cn(
+                                    'shrink-0 h-full border-r last:border-r-0',
+                                    (d + 1) % 5 === 0 ? 'border-slate-300/80' : 'border-slate-100',
+                                  )}
+                                />
+                              ))}
+                            </div>
+
+                            {/* Horizontal Row Dividers & Gantt Bars */}
+                            {schedule.map((item, idx) => {
+                              const sub = item.subTask
+                              const barLeft = item.startOffsetDays * DAY_W
+                              const barWidth = Math.max(1, sub.workingDays) * DAY_W
+                              return (
+                                <div
+                                  key={sub.id}
+                                  style={{ height: ROW_H }}
+                                  className="relative border-b last:border-b-0 border-slate-100 flex items-center"
+                                >
+                                  <div
+                                    title={`${sub.name}: ${item.startDate} → Due ${item.dueDate} (${sub.workingDays} working days)`}
+                                    style={{ left: barLeft + 2, width: Math.max(barWidth - 4, 18) }}
+                                    className={cn(
+                                      'absolute h-6 rounded-md border shadow-sm flex items-center justify-between px-2 text-[10px] font-semibold truncate z-10',
+                                      PRIORITY_BAR[sub.priority],
+                                    )}
+                                  >
+                                    <span className="truncate">{sub.name}</span>
+                                    <span className="ml-1 opacity-90 shrink-0">{sub.workingDays}d</span>
+                                  </div>
+                                </div>
+                              )
+                            })}
+
+                            {/* Automatic SVG Dependency Arrows (Finish-to-Start) */}
+                            <svg
+                              width={trackWidth}
+                              height={schedule.length * ROW_H}
+                              className="absolute inset-0 pointer-events-none z-20"
+                            >
+                              <defs>
+                                <marker
+                                  id="gantt-dep-arrow"
+                                  viewBox="0 0 8 8"
+                                  refX="6"
+                                  refY="4"
+                                  markerWidth="6"
+                                  markerHeight="6"
+                                  orient="auto"
+                                >
+                                  <path d="M 0 1 L 7 4 L 0 7 z" fill="#475569" />
+                                </marker>
+                              </defs>
+                              {schedule.map((item, idx) => {
+                                const depId = item.subTask.dependsOnId
+                                if (!depId) return null
+                                const depIdx = schedule.findIndex((x) => x.subTask.id === depId)
+                                if (depIdx < 0) return null
+                                const depItem = schedule[depIdx]
+
+                                const x1 = (depItem.endOffsetDays + 1) * DAY_W - 2
+                                const y1 = depIdx * ROW_H + ROW_H / 2
+                                const x2 = item.startOffsetDays * DAY_W + 2
+                                const y2 = idx * ROW_H + ROW_H / 2
+                                const turnY = y1 < y2 ? y1 + ROW_H / 2 : y1 - ROW_H / 2
+
+                                const pathD =
+                                  x2 >= x1 + 6
+                                    ? `M ${x1} ${y1} L ${x1 + 6} ${y1} L ${x1 + 6} ${y2} L ${x2} ${y2}`
+                                    : `M ${x1} ${y1} L ${x1 + 6} ${y1} L ${x1 + 6} ${turnY} L ${x2 - 8} ${turnY} L ${x2 - 8} ${y2} L ${x2} ${y2}`
+
+                                return (
+                                  <path
+                                    key={`${depId}->${item.subTask.id}`}
+                                    d={pathD}
+                                    fill="none"
+                                    stroke="#475569"
+                                    strokeWidth="1.5"
+                                    markerEnd="url(#gantt-dep-arrow)"
+                                  />
+                                )
+                              })}
+                            </svg>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )
+                })()}
               </Card>
             </>
           )}

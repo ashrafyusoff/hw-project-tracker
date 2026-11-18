@@ -5,7 +5,6 @@ import { ProjectsPage } from '@/pages/ProjectsPage'
 import { ProjectDetailPage } from '@/pages/ProjectDetailPage'
 import { DeliverablesPage } from '@/pages/DeliverablesPage'
 import { SuppliersPage } from '@/pages/SuppliersPage'
-import { TasksPage } from '@/pages/TasksPage'
 import { NonNpiPage } from '@/pages/NonNpiPage'
 import { CommercialPage } from '@/pages/CommercialPage'
 import { ArchivedPage } from '@/pages/ArchivedPage'
@@ -22,7 +21,6 @@ export default function App() {
           <Route path="projects/:id" element={<ProjectDetailPage />} />
           <Route path="deliverables" element={<DeliverablesPage />} />
           <Route path="suppliers" element={<SuppliersPage />} />
-          <Route path="tasks" element={<TasksPage />} />
           <Route path="non-npi" element={<NonNpiPage />} />
           <Route path="commercial" element={<CommercialPage />} />
           <Route path="archived" element={<ArchivedPage />} />
