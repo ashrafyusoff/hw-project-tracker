@@ -82,7 +82,58 @@ export function countWorkingDays(startYmd: string, endYmd: string): number {
   return Math.max(1, count)
 }
 
-export function buildDefaultSubTasks(): DeliverableSubTaskTemplate[] {
+function buildDesignDeliverableSubTasks(): DeliverableSubTaskTemplate[] {
+  const qId = newId()
+  const petId = newId()
+  const poId = newId()
+  const schId = newId()
+  const schRevId = newId()
+  const layId = newId()
+  const layRevId = newId()
+  const fabId = newId()
+  const shipId = newId()
+  const delivId = newId()
+  // 20-week (100 working days) workflow for PCB & Probe Card
+  return [
+    { id: qId, name: 'Quotation', workingDays: 5, dependsOnId: '', priority: 'Medium' },
+    { id: petId, name: 'PET', workingDays: 5, dependsOnId: qId, priority: 'Medium' },
+    { id: poId, name: 'PO', workingDays: 5, dependsOnId: petId, priority: 'High' },
+    { id: schId, name: 'Schematic', workingDays: 10, dependsOnId: poId, priority: 'High' },
+    { id: schRevId, name: 'Schematic Review', workingDays: 5, dependsOnId: schId, priority: 'High' },
+    { id: layId, name: 'Layout', workingDays: 15, dependsOnId: schRevId, priority: 'High' },
+    { id: layRevId, name: 'Layout Review', workingDays: 5, dependsOnId: layId, priority: 'High' },
+    { id: fabId, name: 'Fab', workingDays: 40, dependsOnId: layRevId, priority: 'Critical' },
+    { id: shipId, name: 'Shipment', workingDays: 9, dependsOnId: fabId, priority: 'Medium' },
+    { id: delivId, name: 'Delivered', kind: 'milestone', workingDays: 1, dependsOnId: shipId, priority: 'Medium' },
+  ]
+}
+
+function buildFabOnlyDeliverableSubTasks(): DeliverableSubTaskTemplate[] {
+  const qId = newId()
+  const petId = newId()
+  const poId = newId()
+  const fabId = newId()
+  const shipId = newId()
+  const delivId = newId()
+  // No design stage; 12-week (60 working days) fabrication for Stiffener, Socket & Handler Kit
+  return [
+    { id: qId, name: 'Quotation', workingDays: 5, dependsOnId: '', priority: 'Medium' },
+    { id: petId, name: 'PET', workingDays: 5, dependsOnId: qId, priority: 'Medium' },
+    { id: poId, name: 'PO', workingDays: 5, dependsOnId: petId, priority: 'High' },
+    { id: fabId, name: 'Fab', workingDays: 60, dependsOnId: poId, priority: 'Critical' },
+    { id: shipId, name: 'Shipment', workingDays: 5, dependsOnId: fabId, priority: 'Medium' },
+    { id: delivId, name: 'Delivered', kind: 'milestone', workingDays: 1, dependsOnId: shipId, priority: 'Medium' },
+  ]
+}
+
+export function buildDefaultSubTasks(categoryOrName = ''): DeliverableSubTaskTemplate[] {
+  const key = categoryOrName.trim().toLowerCase()
+  if (key === 'pcb' || key === 'probe card' || key === 'probe head') {
+    return buildDesignDeliverableSubTasks()
+  }
+  if (key === 'stiffener' || key === 'socket' || key === 'handler kit') {
+    return buildFabOnlyDeliverableSubTasks()
+  }
   const qId = newId()
   const petId = newId()
   const poId = newId()
@@ -99,7 +150,7 @@ export function buildDefaultSubTasks(): DeliverableSubTaskTemplate[] {
     { id: revId, name: 'Review', workingDays: 2, dependsOnId: designId, priority: 'High' },
     { id: fabId, name: 'Fab', workingDays: 10, dependsOnId: revId, priority: 'Critical' },
     { id: shipId, name: 'Shipment', workingDays: 3, dependsOnId: fabId, priority: 'Medium' },
-    { id: delivId, name: 'Delivered', workingDays: 1, dependsOnId: shipId, priority: 'Medium' },
+    { id: delivId, name: 'Delivered', kind: 'milestone', workingDays: 1, dependsOnId: shipId, priority: 'Medium' },
   ]
 }
 
@@ -111,9 +162,16 @@ function createInitialTemplates(): DeliverableTemplate[] {
     id: newId(),
     name: cat,
     category: cat,
-    subTasks: buildDefaultSubTasks(),
+    subTasks: buildDefaultSubTasks(cat),
     updatedAt: now,
   }))
+}
+
+const LEGACY_8_STEP_NAMES = ['Quotation', 'PET', 'PO', 'Design', 'Review', 'Fab', 'Shipment', 'Delivered']
+
+function isUntouchedLegacyTemplate(t: DeliverableTemplate): boolean {
+  if (t.subTasks.length !== LEGACY_8_STEP_NAMES.length) return false
+  return t.subTasks.every((s, idx) => s.name === LEGACY_8_STEP_NAMES[idx])
 }
 
 export function loadDeliverableTemplates(): DeliverableTemplate[] {
@@ -121,7 +179,21 @@ export function loadDeliverableTemplates(): DeliverableTemplate[] {
     const raw = window.localStorage.getItem(STORAGE_KEY)
     if (raw) {
       const parsed = JSON.parse(raw) as DeliverableTemplate[]
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        let migrated = false
+        const upgraded = parsed.map((t) => {
+          const key = (t.name || t.category || '').trim().toLowerCase()
+          const isBuiltInTailored =
+            key === 'pcb' || key === 'probe card' || key === 'probe head' || key === 'stiffener' || key === 'socket' || key === 'handler kit'
+          if (isBuiltInTailored && isUntouchedLegacyTemplate(t)) {
+            migrated = true
+            return { ...t, subTasks: buildDefaultSubTasks(t.name || t.category), updatedAt: nowIso() }
+          }
+          return t
+        })
+        if (migrated) saveDeliverableTemplates(upgraded)
+        return upgraded
+      }
     }
   } catch {
     // ignore storage errors
@@ -206,7 +278,7 @@ export function findTemplateForDeliverable(categoryOrName: string): DeliverableS
   const match = templates.find(
     (t) => t.name.toLowerCase() === needle || t.category.toLowerCase() === needle,
   )
-  return match ? match.subTasks : buildDefaultSubTasks()
+  return match ? match.subTasks : buildDefaultSubTasks(categoryOrName)
 }
 
 /** Creates all sub-tasks in Dexie for a newly added project deliverable, preserving dependencies & working days. */

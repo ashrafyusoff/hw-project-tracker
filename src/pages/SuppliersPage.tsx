@@ -70,9 +70,9 @@ export function SuppliersPage() {
           <EmptyState title={suppliers.length === 0 ? 'No suppliers yet' : 'No suppliers match your search'} hint={suppliers.length === 0 ? 'Click "Add Supplier" to start your directory.' : undefined} />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-xs text-slate-500 text-left bg-slate-50">
-                <tr>{['Supplier', 'Deliverables', 'Contact Person', 'Role', 'Email', 'Phone', 'Location', 'Actions'].map((h) => <th key={h} className="px-3 py-2 font-medium whitespace-nowrap">{h}</th>)}</tr>
+            <table className="w-full text-xs">
+              <thead className="text-[11px] text-slate-600 text-left bg-slate-100">
+                <tr>{['Supplier', 'Deliverables', 'Contact Person', 'Role', 'Email', 'Phone', 'Location', 'Actions'].map((h) => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap">{h}</th>)}</tr>
               </thead>
               <tbody>
                 {rows.map((s) => {

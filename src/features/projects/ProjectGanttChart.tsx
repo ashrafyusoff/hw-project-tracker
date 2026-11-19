@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Diamond, FolderKanban, GitBranch, ListChecks } from 'lucide-react'
 import type { Milestone, Project, Task, Workstream } from '@/types'
 import type { DeliverableCommercialRow } from '@/features/commercial/CommercialForms'
@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui'
 import { formatDate, isPast, todayStr } from '@/utils/helpers'
 
 const DAY = 86400000
+const ROW_H = 44
 const toMs = (s: string) => new Date(s).getTime()
 
 interface GanttItem {
@@ -19,6 +20,7 @@ interface GanttItem {
   progress: number
   status: string
   hwStatus?: string
+  dependsOnItemId?: string
   isPoint?: boolean
   isLate?: boolean
   tooltip: string
@@ -135,6 +137,7 @@ export function ProjectGanttChart({
         endDate: tEnd,
         progress: t.progress,
         status: t.status,
+        dependsOnItemId: t.dependsOnTaskId ? `task-${t.dependsOnTaskId}` : undefined,
         isLate: late,
         tooltip: `Task: ${t.name}\n${formatDate(t.startDate)} → ${formatDate(t.dueDate)}\nStatus: ${t.status}`,
       })
@@ -168,6 +171,19 @@ export function ProjectGanttChart({
     return { items: list, minMs, maxMs, ticks, todayPct }
   }, [p, workstreams, commercialRows, milestones, tasks])
 
+  const timelineRef = useRef<HTMLDivElement>(null)
+  const [timelineWidth, setTimelineWidth] = useState(0)
+
+  useEffect(() => {
+    const el = timelineRef.current
+    if (!el) return
+    const update = () => setTimelineWidth(el.clientWidth)
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [items.length])
+
   const totalSpan = Math.max(maxMs - minMs, DAY)
   const pctOf = (dateStr: string) => Math.max(0, Math.min(100, ((toMs(dateStr) - minMs) / totalSpan) * 100))
 
@@ -200,7 +216,7 @@ export function ProjectGanttChart({
           <div className="flex border-b border-slate-200 bg-slate-100 text-xs font-semibold text-slate-700">
             <div className="w-72 shrink-0 px-3 py-2.5 border-r border-slate-200">NPI / HRS Item</div>
             <div className="w-40 shrink-0 px-3 py-2.5 border-r border-slate-200">Status</div>
-            <div className="relative flex-1 h-9">
+            <div ref={timelineRef} className="relative flex-1 h-9">
               {ticks.map((t, idx) => (
                 <span
                   key={idx}
@@ -213,74 +229,133 @@ export function ProjectGanttChart({
             </div>
           </div>
 
-          {/* Gantt Rows */}
-          {items.map((item) => {
-            const left = pctOf(item.startDate)
-            const right = pctOf(item.endDate)
-            const width = Math.max(right - left, 1.4)
-            return (
-              <div
-                key={item.id}
-                className={`flex items-center border-b last:border-b-0 border-slate-100 hover:bg-slate-50/80 text-xs ${
-                  item.category === 'project' ? 'bg-blue-50/30 font-semibold' : ''
-                }`}
-              >
-                {/* Item column */}
-                <div className="w-72 shrink-0 px-3 py-2 border-r border-slate-200 min-w-0">
-                  <div className="flex items-center gap-1.5 truncate">
-                    {item.category === 'project' && <FolderKanban className="h-3.5 w-3.5 text-primary shrink-0" />}
-                    {item.category === 'deliverable' && <GitBranch className="h-3.5 w-3.5 text-indigo-600 shrink-0 ml-2" />}
-                    {item.category === 'milestone' && <Diamond className="h-3.5 w-3.5 text-amber-600 shrink-0 ml-2" />}
-                    {item.category === 'task' && <ListChecks className="h-3.5 w-3.5 text-sky-600 shrink-0 ml-2" />}
-                    <span className="truncate text-slate-800" title={item.label}>{item.label}</span>
+          {/* Gantt Rows + Predecessor Dependency Arrows SVG Overlay */}
+          <div className="relative">
+            {items.map((item) => {
+              const left = pctOf(item.startDate)
+              const right = pctOf(item.endDate)
+              const width = Math.max(right - left, 1.4)
+              return (
+                <div
+                  key={item.id}
+                  style={{ height: ROW_H }}
+                  className={`flex items-center border-b last:border-b-0 border-slate-100 hover:bg-slate-50/80 text-xs ${
+                    item.category === 'project' ? 'bg-blue-50/30 font-semibold' : ''
+                  }`}
+                >
+                  {/* Item column */}
+                  <div className="w-72 shrink-0 px-3 py-1.5 border-r border-slate-200 min-w-0 h-full flex flex-col justify-center">
+                    <div className="flex items-center gap-1.5 truncate">
+                      {item.category === 'project' && <FolderKanban className="h-3.5 w-3.5 text-primary shrink-0" />}
+                      {item.category === 'deliverable' && <GitBranch className="h-3.5 w-3.5 text-indigo-600 shrink-0 ml-2" />}
+                      {item.category === 'milestone' && <Diamond className="h-3.5 w-3.5 text-amber-600 shrink-0 ml-2" />}
+                      {item.category === 'task' && <ListChecks className="h-3.5 w-3.5 text-sky-600 shrink-0 ml-2" />}
+                      <span className="truncate text-slate-800" title={item.label}>{item.label}</span>
+                    </div>
+                    {item.sublabel && (
+                      <div className="text-[11px] text-slate-500 truncate pl-5 font-normal" title={item.sublabel}>
+                        {item.sublabel}
+                      </div>
+                    )}
                   </div>
-                  {item.sublabel && (
-                    <div className="text-[11px] text-slate-500 truncate pl-5 font-normal" title={item.sublabel}>
-                      {item.sublabel}
-                    </div>
-                  )}
-                </div>
 
-                {/* Status / Progress column */}
-                <div className="w-40 shrink-0 px-3 py-2 border-r border-slate-200 flex items-center justify-between gap-1">
-                  {item.hwStatus ? <CommercialBadge status={item.hwStatus} /> : <Badge>{item.status}</Badge>}
-                </div>
+                  {/* Status / Progress column */}
+                  <div className="w-40 shrink-0 px-3 py-1.5 border-r border-slate-200 h-full flex items-center justify-between gap-1">
+                    {item.hwStatus ? <CommercialBadge status={item.hwStatus} /> : <Badge>{item.status}</Badge>}
+                  </div>
 
-                {/* Timeline Bar Area */}
-                <div className="relative flex-1 h-11">
-                  {ticks.map((t, idx) => (
-                    <span key={idx} className="absolute inset-y-0 border-l border-slate-100" style={{ left: `${t.pct}%` }} />
-                  ))}
-                  {/* Today Marker */}
-                  <span
-                    className="absolute inset-y-0 border-l-2 border-red-400/80 z-10 pointer-events-none"
-                    style={{ left: `${todayPct}%` }}
-                    title={`Today: ${formatDate(todayStr())}`}
-                  />
+                  {/* Timeline Bar Area */}
+                  <div className="relative flex-1 h-full">
+                    {ticks.map((t, idx) => (
+                      <span key={idx} className="absolute inset-y-0 border-l border-slate-100" style={{ left: `${t.pct}%` }} />
+                    ))}
+                    {/* Today Marker */}
+                    <span
+                      className="absolute inset-y-0 border-l-2 border-red-400/80 z-10 pointer-events-none"
+                      style={{ left: `${todayPct}%` }}
+                      title={`Today: ${formatDate(todayStr())}`}
+                    />
 
-                  {item.isPoint ? (
-                    <div
-                      className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 group cursor-pointer"
-                      style={{ left: `${left}%` }}
-                      title={item.tooltip}
-                    >
-                      <div className={`h-3.5 w-3.5 rotate-45 rounded-[2px] border border-white shadow ${barBg(item)}`} />
-                      <span className="text-[10px] font-semibold text-slate-700 bg-white/90 px-1 rounded shadow-sm whitespace-nowrap">
-                        {formatDate(item.startDate)}
-                      </span>
-                    </div>
-                  ) : (
-                    <div
-                      className={`absolute top-3 h-5 rounded-md ${barBg(item)} bg-opacity-85 shadow-sm overflow-hidden cursor-pointer`}
-                      style={{ left: `${left}%`, width: `${width}%` }}
-                      title={item.tooltip}
-                    >
-                    </div>
-                  )}
+                    {item.isPoint ? (
+                      <div
+                        className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 group cursor-pointer"
+                        style={{ left: `${left}%` }}
+                        title={item.tooltip}
+                      >
+                        <div className={`h-3.5 w-3.5 rotate-45 rounded-[2px] border border-white shadow ${barBg(item)}`} />
+                        <span className="text-[10px] font-semibold text-slate-700 bg-white/90 px-1 rounded shadow-sm whitespace-nowrap">
+                          {formatDate(item.startDate)}
+                        </span>
+                      </div>
+                    ) : (
+                      <div
+                        className={`absolute top-3 h-5 rounded-md ${barBg(item)} bg-opacity-85 shadow-sm overflow-hidden cursor-pointer`}
+                        style={{ left: `${left}%`, width: `${width}%` }}
+                        title={item.tooltip}
+                      />
+                    )}
+                  </div>
                 </div>
-              </div>
-            )
-          })}
+              )
+            })}
+
+            {/* Automatic SVG Dependency Arrows for Related Tasks (Finish-to-Start) */}
+            {timelineWidth > 0 && (
+              <svg
+                width={timelineWidth}
+                height={items.length * ROW_H}
+                style={{ left: 448 }}
+                className="absolute top-0 pointer-events-none z-20"
+              >
+                <defs>
+                  <marker
+                    id="proj-gantt-dep-arrow"
+                    viewBox="0 0 8 8"
+                    refX="6"
+                    refY="4"
+                    markerWidth="6"
+                    markerHeight="6"
+                    orient="auto"
+                  >
+                    <path d="M 0 1 L 7 4 L 0 7 z" fill="#475569" />
+                  </marker>
+                </defs>
+                {items.map((item, idx) => {
+                  if (!item.dependsOnItemId) return null
+                  const depIdx = items.findIndex((x) => x.id === item.dependsOnItemId)
+                  if (depIdx < 0) return null
+                  const depItem = items[depIdx]
+
+                  const depLeftPct = pctOf(depItem.startDate)
+                  const depRightPct = pctOf(depItem.endDate)
+                  const depEndPct = Math.max(depRightPct, depLeftPct + 1.4)
+                  const curStartPct = pctOf(item.startDate)
+
+                  const x1 = (depEndPct / 100) * timelineWidth
+                  const y1 = depIdx * ROW_H + ROW_H / 2
+                  const x2 = (curStartPct / 100) * timelineWidth
+                  const y2 = idx * ROW_H + ROW_H / 2
+                  const turnY = y1 < y2 ? y1 + ROW_H / 2 : y1 - ROW_H / 2
+
+                  const pathD =
+                    x2 >= x1 + 8
+                      ? `M ${x1} ${y1} L ${x1 + 6} ${y1} L ${x1 + 6} ${y2} L ${x2} ${y2}`
+                      : `M ${x1} ${y1} L ${x1 + 6} ${y1} L ${x1 + 6} ${turnY} L ${x2 - 8} ${turnY} L ${x2 - 8} ${y2} L ${x2} ${y2}`
+
+                  return (
+                    <path
+                      key={`${depItem.id}->${item.id}`}
+                      d={pathD}
+                      fill="none"
+                      stroke="#475569"
+                      strokeWidth="1.5"
+                      markerEnd="url(#proj-gantt-dep-arrow)"
+                    />
+                  )
+                })}
+              </svg>
+            )}
+          </div>
         </div>
       </div>
     </div>

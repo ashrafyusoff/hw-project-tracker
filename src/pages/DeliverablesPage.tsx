@@ -37,15 +37,23 @@ export function DeliverablesPage() {
   const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map())
   const prevRowRects = useRef<Map<string, DOMRect>>(new Map())
   const lastRowSwapRef = useRef<{ toIdx: number; time: number }>({ toIdx: -1, time: 0 })
-  const ganttTrackRef = useRef<HTMLDivElement>(null)
-  const [measuredTrackWidth, setMeasuredTrackWidth] = useState(0)
+  const ganttScrollRef = useRef<HTMLDivElement>(null)
+  const [containerWidth, setContainerWidth] = useState(0)
 
   const selected = templates.find((t) => t.id === selectedId) ?? templates[0] ?? null
 
   useEffect(() => {
-    const el = ganttTrackRef.current
+    const onUndoSync = () => {
+      setTemplates(loadDeliverableTemplates())
+    }
+    window.addEventListener('npi-undo-sync', onUndoSync)
+    return () => window.removeEventListener('npi-undo-sync', onUndoSync)
+  }, [])
+
+  useEffect(() => {
+    const el = ganttScrollRef.current
     if (!el) return
-    const update = () => setMeasuredTrackWidth(el.clientWidth)
+    const update = () => setContainerWidth(el.clientWidth)
     update()
     const observer = new ResizeObserver(update)
     observer.observe(el)
@@ -124,7 +132,7 @@ export function DeliverablesPage() {
       id: newId(),
       name,
       category: name,
-      subTasks: buildDefaultSubTasks(),
+      subTasks: buildDefaultSubTasks(name),
       updatedAt: nowIso(),
     }
     const next = [...templates, item]
@@ -273,11 +281,12 @@ export function DeliverablesPage() {
 
   function resetDefaultSubTasks() {
     if (!selected) return
+    const nextTasks = buildDefaultSubTasks(selected.name || selected.category)
     const next = templates.map((t) =>
-      t.id === selected.id ? { ...t, subTasks: buildDefaultSubTasks(), updatedAt: nowIso() } : t,
+      t.id === selected.id ? { ...t, subTasks: nextTasks, updatedAt: nowIso() } : t,
     )
     setTemplates(next)
-    saveAllPermanently(next, 'Reset to default 8 tasks & saved permanently')
+    saveAllPermanently(next, `Reset "${selected.name}" to default (${nextTasks.length} steps) & saved permanently`)
   }
 
   function confirmSaveAndLeave() {
@@ -411,8 +420,8 @@ export function DeliverablesPage() {
                         className="h-7 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700"
                       />
                     </label>
-                    <Button size="sm" onClick={resetDefaultSubTasks} title="Reset to default 8-step process">
-                      <RotateCcw className="h-3.5 w-3.5" /> Default 8 Tasks
+                    <Button size="sm" onClick={resetDefaultSubTasks} title="Reset to default workflow for this deliverable">
+                      <RotateCcw className="h-3.5 w-3.5" /> Reset Default
                     </Button>
                     <Button size="sm" onClick={addSubTask}>
                       <Plus className="h-3.5 w-3.5" /> Add Task
@@ -607,37 +616,41 @@ export function DeliverablesPage() {
                 {schedule.length === 0 ? (
                   <EmptyState title="No tasks to display" />
                 ) : (() => {
-                  const MIN_DAY_W = 24
+                  const LEFT_COL_W = 220
+                  const BASE_WEEKS = 20
                   const ROW_H = 34
-                  const totalWeeks = Math.max(1, Math.ceil(Math.max(totalWorkingDays, 5) / 5))
+                  const totalWeeks = Math.max(BASE_WEEKS, Math.ceil(Math.max(totalWorkingDays, 5) / 5))
                   const totalDays = totalWeeks * 5
-                  const minTrackWidth = totalDays * MIN_DAY_W
-                  const trackWidth = Math.max(minTrackWidth, measuredTrackWidth)
+                  const availableTrackWidth = Math.max(500, (containerWidth || 980) - LEFT_COL_W)
+                  const weekWidth = availableTrackWidth / BASE_WEEKS
+                  const trackWidth = totalWeeks * weekWidth
                   const dayW = trackWidth / totalDays
                   const weekBlocks = Array.from({ length: totalWeeks }, (_, wIdx) => {
                     const firstDayDate = addWorkingDays(previewStart, wIdx * 5 + 1)
                     const isoWw = getIsoWeek(parseYmdLocal(firstDayDate))
                     return {
                       wIdx,
-                      label: `WW${String(isoWw).padStart(2, '0')} (W${wIdx + 1})`,
-                      startDayNum: wIdx * 5 + 1,
+                      label: `WW${String(isoWw).padStart(2, '0')}`,
+                      title: `WW${String(isoWw).padStart(2, '0')} (Week ${wIdx + 1})`,
                     }
                   })
 
                   return (
-                    <div className="overflow-x-auto -mx-4 -mb-4 border-t border-slate-200">
-                      <div className="w-full align-top" style={{ minWidth: 235 + minTrackWidth }}>
+                    <div ref={ganttScrollRef} className="overflow-x-auto -mx-4 -mb-4 border-t border-slate-200">
+                      <div style={{ width: LEFT_COL_W + trackWidth }} className="align-top">
                         {/* Gantt Header: Left Task/Days column + Right Workweek Header (only WW) */}
                         <div className="flex bg-slate-100 border-b border-slate-200 text-[11px] font-semibold text-slate-600">
-                          <div className="w-[235px] shrink-0 px-2.5 py-1.5 border-r border-slate-200 flex items-center justify-between">
+                          <div style={{ width: LEFT_COL_W }} className="shrink-0 px-2.5 py-1.5 border-r border-slate-200 flex items-center justify-between">
                             <span>Task / Milestone</span>
                             <span>Days (Edit)</span>
                           </div>
-                          <div className="flex-1 flex" style={{ minWidth: minTrackWidth }}>
+                          <div className="shrink-0 flex" style={{ width: trackWidth }}>
                             {weekBlocks.map((wb) => (
                               <div
                                 key={wb.wIdx}
-                                className="flex-1 text-center py-1.5 border-r last:border-r-0 border-slate-300 text-[11px] font-bold text-slate-700"
+                                style={{ width: weekWidth }}
+                                title={wb.title}
+                                className="shrink-0 text-center py-1.5 border-r last:border-r-0 border-slate-300 text-[10px] font-bold text-slate-700"
                               >
                                 {wb.label}
                               </div>
@@ -648,7 +661,7 @@ export function DeliverablesPage() {
                         {/* Gantt Body: Left Task List (with editable days) + Right Timeline Track with SVG Dependency Arrows */}
                         <div className="flex">
                           {/* Left Column: Task Name + Inline Editable Working Days */}
-                          <div className="w-[235px] shrink-0 border-r border-slate-200">
+                          <div style={{ width: LEFT_COL_W }} className="shrink-0 border-r border-slate-200">
                             {schedule.map((item, idx) => {
                               const sub = item.subTask
                               const depIdx = sub.dependsOnId
@@ -696,20 +709,22 @@ export function DeliverablesPage() {
                             })}
                           </div>
 
-                          {/* Right Timeline Track: Full-width responsive grid + Overlapping Bars + Automatic SVG Dependency Arrows */}
+                          {/* Right Timeline Track: 20-week fit (stretches only if >20w) + Subtle Day Lines + SVG Arrows */}
                           <div
-                            ref={ganttTrackRef}
-                            className="relative flex-1"
-                            style={{ minWidth: minTrackWidth, height: schedule.length * ROW_H }}
+                            className="relative shrink-0"
+                            style={{ width: trackWidth, height: schedule.length * ROW_H }}
                           >
-                            {/* Vertical Working Day & Workweek Grid Lines */}
+                            {/* Vertical Working Day (very subtle thin lines) & Workweek Grid Lines */}
                             <div className="absolute inset-0 flex pointer-events-none">
                               {Array.from({ length: totalDays }, (_, d) => (
                                 <div
                                   key={d}
+                                  style={{ width: dayW }}
                                   className={cn(
-                                    'flex-1 h-full border-r last:border-r-0',
-                                    (d + 1) % 5 === 0 ? 'border-slate-300/80' : 'border-slate-100',
+                                    'shrink-0 h-full border-r last:border-r-0',
+                                    (d + 1) % 5 === 0
+                                      ? 'border-slate-300/75 dark:border-slate-600/70'
+                                      : 'border-slate-200/35 dark:border-slate-700/25',
                                   )}
                                 />
                               ))}

@@ -21,11 +21,27 @@ export function usePersistedState<T>(key: string, defaultValue: T) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(key, JSON.stringify(state))
+      const nextRaw = JSON.stringify(state)
+      if (localStorage.getItem(key) !== nextRaw) {
+        localStorage.setItem(key, nextRaw)
+      }
     } catch {
       // ignore quota or storage errors
     }
   }, [key, state])
+
+  useEffect(() => {
+    const onUndoSync = () => {
+      try {
+        const raw = localStorage.getItem(key)
+        setState(raw !== null ? (JSON.parse(raw) as T) : defaultValue)
+      } catch {
+        // ignore parse errors
+      }
+    }
+    window.addEventListener('npi-undo-sync', onUndoSync)
+    return () => window.removeEventListener('npi-undo-sync', onUndoSync)
+  }, [key, defaultValue])
 
   return [state, setState] as const
 }
