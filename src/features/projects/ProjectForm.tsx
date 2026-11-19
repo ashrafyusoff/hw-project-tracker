@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { HW_TYPES, PROJECT_STATUSES, isArchivedStatus, type Project } from '@/types'
+import { HW_TYPES, PROJECT_STATUSES, type Project } from '@/types'
 import { emptyProject, createProject, updateProject, type ProjectInput } from '@/services/projectService'
 import { todayStr } from '@/utils/helpers'
 import { errorMessage } from '@/utils/validation'
-import { Button, ConfirmDialog, Field, FormError, Input, Modal, Select, Textarea } from '@/components/ui'
+import { Button, Field, FormError, Input, Modal, Select, Textarea } from '@/components/ui'
 
 
 // Create / edit project dialog. `project` = editing, undefined = creating.
@@ -24,12 +24,10 @@ function ProjectFormBody({ project, onClose }: { project?: Project; onClose: () 
   )
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
-  const [confirmArchive, setConfirmArchive] = useState(false)
   const set = <K extends keyof ProjectInput>(k: K, v: ProjectInput[K]) => setForm((f) => ({ ...f, [k]: v }))
 
-  const willMoveToArchive = isArchivedStatus(form.status) && (!project || !isArchivedStatus(project.status))
-
-  async function doSave() {
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
     setSaving(true)
     setError('')
     try {
@@ -45,17 +43,7 @@ function ProjectFormBody({ project, onClose }: { project?: Project; onClose: () 
       setError(errorMessage(err))
     } finally {
       setSaving(false)
-      setConfirmArchive(false)
     }
-  }
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault()
-    if (willMoveToArchive) {
-      setConfirmArchive(true)
-      return
-    }
-    await doSave()
   }
 
   return (
@@ -87,27 +75,10 @@ function ProjectFormBody({ project, onClose }: { project?: Project; onClose: () 
       <Field label="Description">
         <Textarea value={form.description} onChange={(e) => set('description', e.target.value)} />
       </Field>
-      {willMoveToArchive && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          Setting status to <b>{form.status}</b> will move this project and all its data to <b>Archived</b>. This action is non-returnable.
-        </div>
-      )}
       <div className="flex justify-end gap-2 pt-1">
         <Button type="button" onClick={onClose}>Cancel</Button>
         <Button type="submit" variant="primary" disabled={saving}>{saving ? 'Saving…' : 'Save Project'}</Button>
       </div>
-      <ConfirmDialog
-        open={confirmArchive}
-        title={`Move HRS ${form.code || ''} to Archived?`}
-        confirmLabel={`Confirm & Archive (${form.status})`}
-        onCancel={() => setConfirmArchive(false)}
-        onConfirm={doSave}
-        message={
-          <>
-            Changing the project status to <b>{form.status}</b> will move all project data for <b>HRS {form.code || 'this project'}</b> to the <b>Archived</b> tab. <b>This action is non-returnable.</b> Do you want to proceed?
-          </>
-        }
-      />
     </form>
   )
 }

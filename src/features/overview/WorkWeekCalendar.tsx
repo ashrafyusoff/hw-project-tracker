@@ -448,11 +448,17 @@ export function WorkWeekCalendar({
     }
     const onWindowClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null
-      if (!target?.closest('[data-calendar-item], [data-priority-box]')) {
+      if (!target) return
+      // Keep selection & drawer open when clicking inside the slide-over drawer
+      if (target.closest('[data-overview-drawer]')) return
+      if (!target.closest('[data-calendar-item], [data-priority-box]')) {
         setSelectedItem(null)
       }
-      if (!target?.closest('[data-calendar-item], [data-priority-box], [data-calendar-day], [data-add-task-btn]')) {
+      if (!target.closest('[data-calendar-item], [data-priority-box], [data-calendar-day], [data-add-task-btn]')) {
         setSelectedDay('')
+        if (drawerOpen) {
+          closeDrawer()
+        }
       }
     }
     window.addEventListener('keydown', onKeyDown)
@@ -737,7 +743,7 @@ export function WorkWeekCalendar({
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                 <span>Overdue Basket</span>
               </div>
-              <span className="inline-flex items-center rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">
+              <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full border border-red-300 bg-red-800/85 px-1.5 text-[11px] font-bold text-red-50 shadow-sm dark:border-red-500/40 dark:bg-red-900/75 dark:text-red-200">
                 {overdueTasks.length}
               </span>
             </div>
@@ -846,7 +852,12 @@ export function WorkWeekCalendar({
                     <div
                       key={day.ymd}
                       data-calendar-day
-                      onClick={() => setSelectedDay(day.ymd)}
+                      onClick={() => {
+                        setSelectedDay(day.ymd)
+                        if (drawerOpen && drawerTarget?.kind === 'new-task') {
+                          setDrawerTarget({ kind: 'new-task', dueDate: day.ymd })
+                        }
+                      }}
                       onDoubleClick={() => openNewTaskDrawer(day.ymd)}
                       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dragOverCell !== day.ymd) setDragOverCell(day.ymd) }}
                       onDragLeave={() => setDragOverCell((c) => (c === day.ymd ? '' : c))}
@@ -998,6 +1009,7 @@ export function WorkWeekCalendar({
       {createPortal(
         <>
           <aside
+            data-overview-drawer
             aria-hidden={!drawerOpen}
             className={cn(
               'fixed inset-y-0 left-0 z-50 w-full max-w-md flex flex-col gap-3 p-3 transition-transform duration-300 ease-in-out pointer-events-none',
@@ -1036,7 +1048,7 @@ export function WorkWeekCalendar({
             {/* Island 2: Content Island (same rounded-3xl style as Workspace sidebar island, extended right) */}
             <div className="pointer-events-auto flex-1 flex flex-col rounded-3xl liquid-glass shadow-2xl overflow-hidden min-h-0">
               {drawerTarget?.kind === 'new-task' && (
-                <div className="flex items-center gap-2 px-4 pt-3.5 pb-2.5 border-b border-slate-200/80 shrink-0">
+                <div className="flex items-center gap-2 px-4 pt-3.5 pb-1 shrink-0">
                   <span className="text-xs font-semibold text-slate-500 mr-1">Type:</span>
                   <Button
                     type="button"
@@ -1066,7 +1078,7 @@ export function WorkWeekCalendar({
                 )}
                 {drawerTarget?.kind === 'new-task' && newItemKind === 'task' && (
                   <TaskFormBody
-                    key={`drawer-new-task-${drawerTarget.dueDate}-${filterProject}`}
+                    key={`drawer-new-task-${filterProject}`}
                     defaultProjectId={filterProject}
                     defaultDueDate={drawerTarget.dueDate || undefined}
                     compact
@@ -1075,7 +1087,7 @@ export function WorkWeekCalendar({
                 )}
                 {drawerTarget?.kind === 'new-task' && newItemKind === 'milestone' && (
                   <MilestoneFormBody
-                    key={`drawer-new-ms-${drawerTarget.dueDate}-${filterProject}`}
+                    key={`drawer-new-ms-${filterProject}`}
                     defaultProjectId={filterProject}
                     defaultTargetDate={drawerTarget.dueDate || undefined}
                     compact

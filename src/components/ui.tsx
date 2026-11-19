@@ -29,9 +29,10 @@ export function Button({ variant = 'secondary', size = 'md', className, ...props
 const badgeColors: Record<string, string> = {
   grey: 'bg-slate-100 text-slate-600', blue: 'bg-blue-50 text-blue-700', green: 'bg-emerald-50 text-emerald-700',
   amber: 'bg-amber-50 text-amber-700', red: 'bg-red-50 text-red-700', violet: 'bg-violet-50 text-violet-700',
+  cyan: 'bg-cyan-100/90 text-cyan-950',
 }
 const statusColor: Record<string, string> = {
-  Planning: 'violet', 'In Progress': 'blue', 'On Hold': 'amber', Delayed: 'red', Completed: 'green', Cancelled: 'grey',
+  Planning: 'violet', 'In Progress': 'blue', 'In Validation': 'cyan', 'On Hold': 'amber', Delayed: 'red', Completed: 'green', Cancelled: 'grey',
   'Not Started': 'grey', Low: 'grey', Medium: 'blue', High: 'amber', Critical: 'red',
 }
 export function Badge({ children, color }: { children: ReactNode; color?: string }) {

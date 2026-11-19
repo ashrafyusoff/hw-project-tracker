@@ -8,12 +8,13 @@ export interface BaseRecord {
   updatedAt: string
 }
 
-export const PROJECT_STATUSES = ['Planning', 'In Progress', 'On Hold', 'Delayed', 'Completed', 'Cancelled'] as const
+export const PROJECT_STATUSES = ['Planning', 'In Progress', 'In Validation', 'On Hold', 'Delayed', 'Completed', 'Cancelled'] as const
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number]
 
-export const ACTIVE_PROJECT_STATUSES = ['Planning', 'In Progress', 'On Hold', 'Delayed'] as const
-export const ARCHIVED_PROJECT_STATUSES = ['Completed', 'Cancelled'] as const
-export const isArchivedStatus = (status: string) => status === 'Completed' || status === 'Cancelled'
+export const ACTIVE_PROJECT_STATUSES = ['Planning', 'In Progress', 'In Validation', 'On Hold', 'Delayed', 'Completed', 'Cancelled'] as const
+export const ARCHIVED_PROJECT_STATUSES = ['Planning', 'In Progress', 'In Validation', 'On Hold', 'Delayed', 'Completed', 'Cancelled'] as const
+export const isArchivedProject = (p: { isArchived?: boolean }) => !!p.isArchived
+export const isArchivedStatus = (_status: string) => false
 
 export const PRIORITIES = ['Low', 'Medium', 'High', 'Critical'] as const
 export type Priority = (typeof PRIORITIES)[number]
@@ -55,6 +56,7 @@ export interface Project extends BaseRecord {
   code: string
   name: string
   isNonNpi?: boolean
+  isArchived?: boolean
   nonNpiCategory?: string
   hwType?: HwType
   deviceName: string

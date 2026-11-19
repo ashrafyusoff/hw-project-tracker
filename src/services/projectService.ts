@@ -1,5 +1,5 @@
 import { db } from '@/database/db'
-import { isArchivedStatus, type Project } from '@/types'
+import { isArchivedProject, type Project } from '@/types'
 import { clampProgress, newId, nowIso, todayStr } from '@/utils/helpers'
 import { ValidationError, checkDateOrder, requireText } from '@/utils/validation'
 import { logActivity } from './activityService'
@@ -20,7 +20,7 @@ async function assertCodeUnique(code: string, ignoreId?: string) {
 
 export async function createProject(input: ProjectInput): Promise<string> {
   const startDate = input.startDate || todayStr()
-  const normalized = { ...input, startDate }
+  const normalized = { ...input, startDate, isArchived: !!input.isArchived }
   validate(normalized)
   const code = normalized.code.trim()
   await assertCodeUnique(code)
@@ -40,17 +40,29 @@ export async function updateProject(id: string, input: ProjectInput) {
   await assertCodeUnique(code, id)
   const old = await db.projects.get(id)
   if (!old) throw new ValidationError('Project no longer exists.')
-  if (isArchivedStatus(old.status) && !isArchivedStatus(input.status)) {
-    throw new ValidationError('Archived projects cannot be returned to active status.')
+  if (isArchivedProject(old) && !input.isArchived) {
+    throw new ValidationError('Archived projects cannot be returned to active projects.')
   }
   const name = input.name.trim() || input.deviceName.trim() || code
   await db.transaction('rw', db.projects, db.activityLogs, async () => {
-    await db.projects.update(id, { ...input, code, name, progress: clampProgress(input.progress), updatedAt: nowIso() })
-    if (old.status !== input.status) {
+    await db.projects.update(id, { ...input, isArchived: !!(input.isArchived ?? old.isArchived), code, name, progress: clampProgress(input.progress), updatedAt: nowIso() })
+    if (!old.isArchived && input.isArchived) {
+      await logActivity('Project', id, id, 'Status Changed', `Project ${code} moved to Archived`)
+    } else if (old.status !== input.status) {
       await logActivity('Project', id, id, 'Status Changed', `Project ${code} status: ${old.status} → ${input.status}`)
     } else {
       await logActivity('Project', id, id, 'Updated', `Project ${code} updated`)
     }
+  })
+}
+
+export async function archiveProject(id: string) {
+  const old = await db.projects.get(id)
+  if (!old) throw new ValidationError('Project no longer exists.')
+  if (old.isArchived) return
+  await db.transaction('rw', db.projects, db.activityLogs, async () => {
+    await db.projects.update(id, { isArchived: true, updatedAt: nowIso() })
+    await logActivity('Project', id, id, 'Status Changed', `Project ${old.code} moved to Archived`)
   })
 }
 

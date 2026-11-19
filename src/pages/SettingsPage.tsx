@@ -23,7 +23,7 @@ import { useTheme } from '@/hooks/useTheme'
 import { exportJsonBackup, getDatabaseStatus, resetAllData, restoreBackup, validateBackup, type BackupFile } from '@/services/backupService'
 import { REPORT_NAMES, exportAllReports, exportReport } from '@/services/exportService'
 import { clearSampleData, hasSampleData, loadSampleData } from '@/services/sampleData'
-import { isArchivedStatus } from '@/types'
+import { isArchivedProject } from '@/types'
 import { todayStr } from '@/utils/helpers'
 import { errorMessage } from '@/utils/validation'
 
@@ -48,6 +48,10 @@ const FILTER_STORAGE_KEYS = [
   'npi.projects.status',
   'npi.projects.sort',
   'npi.projects.collapsedIds',
+  'npi.projects.buttonOrder',
+  'npi.projects.selectedId',
+  'npi.projects.expandedDeliverableTasks',
+  'npi.projects.expandedProjectTasks',
   'npi.tasks.tab',
   'npi.tasks.search',
   'npi.tasks.projectId',
@@ -109,7 +113,7 @@ export function SettingsPage() {
           db.meetingActions.toArray(),
         ])
 
-      const activeNpi = projects.filter((p) => !p.isNonNpi && !isArchivedStatus(p.status))
+      const activeNpi = projects.filter((p) => !p.isNonNpi && !isArchivedProject(p))
       const activeNpiIds = new Set(activeNpi.map((p) => p.id))
       const activeDeliverables = workstreams.filter((w) => activeNpiIds.has(w.projectId))
       const poByWs = new Set(pos.filter((r) => !!r.number && !!r.workstreamId).map((r) => r.workstreamId))
@@ -183,10 +187,12 @@ export function SettingsPage() {
     const archivedCollapsed: Record<string, boolean> = {}
     for (const p of allProjects) {
       if (p.isNonNpi) nonNpiCollapsed[p.id] = true
-      if (isArchivedStatus(p.status)) archivedCollapsed[p.id] = true
+      if (isArchivedProject(p)) archivedCollapsed[p.id] = true
       else if (!p.isNonNpi) projCollapsed[p.id] = true
     }
     window.localStorage.setItem('npi.projects.collapsedIds', JSON.stringify(projCollapsed))
+    window.localStorage.setItem('npi.projects.expandedDeliverableTasks', JSON.stringify({}))
+    window.localStorage.setItem('npi.projects.expandedProjectTasks', JSON.stringify({}))
     window.localStorage.setItem('npi.nonnpi.collapsedIds', JSON.stringify(nonNpiCollapsed))
     window.localStorage.setItem('npi.archived.collapsedIds', JSON.stringify(archivedCollapsed))
     window.localStorage.setItem('npi.suppliers.expandedContacts', JSON.stringify({}))

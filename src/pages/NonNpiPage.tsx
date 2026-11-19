@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Briefcase, ChevronDown, ChevronRight, ListChecks, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Archive, Briefcase, ChevronDown, ChevronRight, ListChecks, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useTable } from '@/hooks/useTable'
 import { usePersistedState } from '@/hooks/usePersistedState'
 import {
@@ -8,7 +8,7 @@ import {
   NON_NPI_TASK_STATUSES,
   PRIORITIES,
   PROJECT_STATUSES,
-  isArchivedStatus,
+  isArchivedProject,
   type Priority,
   type Project,
   type ProjectStatus,
@@ -33,7 +33,7 @@ import { InlineStatusSelect } from './ProjectsPage'
 import { TabSaveControls } from '@/components/TabSaveControls'
 import { TaskForm } from '@/features/tasks/TaskForm'
 import { DeadlineBadge, isOverdueTask } from '@/features/tasks/TaskTable'
-import { createProject, deleteProject, emptyProject, updateProject, type ProjectInput } from '@/services/projectService'
+import { archiveProject, createProject, deleteProject, emptyProject, updateProject, type ProjectInput } from '@/services/projectService'
 import { deleteTask, updateTask } from '@/services/taskService'
 import { loadSampleData } from '@/services/sampleData'
 import { formatDate, isPast, todayStr } from '@/utils/helpers'
@@ -85,7 +85,7 @@ export function NonNpiPage() {
   const [workModalOpen, setWorkModalOpen] = useState(false)
   const [editingWork, setEditingWork] = useState<Project | undefined>()
   const [deletingWork, setDeletingWork] = useState<Project | undefined>()
-  const [archivingWork, setArchivingWork] = useState<{ project: Project; nextStatus: ProjectStatus } | undefined>()
+  const [archivingWork, setArchivingWork] = useState<Project | undefined>()
 
   const [taskModalOpen, setTaskModalOpen] = useState(false)
   const [taskProjectId, setTaskProjectId] = useState('')
@@ -96,7 +96,7 @@ export function NonNpiPage() {
   const nonNpiWorks = useMemo(() => {
     const q = search.trim().toLowerCase()
     return (projects ?? [])
-      .filter((p) => !!p.isNonNpi && !isArchivedStatus(p.status))
+      .filter((p) => !!p.isNonNpi && !isArchivedProject(p))
       .filter((p) => !category || (p.nonNpiCategory || 'Ad-hoc Task') === category)
       .filter((p) => !priority || p.priority === priority)
       .filter((p) => !status || p.status === status)
@@ -224,7 +224,7 @@ export function NonNpiPage() {
                         onToggleCollapse={() => setCollapsedIds((prev) => ({ ...prev, [w.id]: !prev[w.id] }))}
                         onEditWork={() => { setEditingWork(w); setWorkModalOpen(true) }}
                         onDeleteWork={() => setDeletingWork(w)}
-                        onRequestArchive={(nextStatus) => setArchivingWork({ project: w, nextStatus })}
+                        onRequestArchive={() => setArchivingWork(w)}
                         onAddTask={() => { setTaskProjectId(w.id); setEditingTask(undefined); setTaskModalOpen(true) }}
                         onEditTask={(t) => { setTaskProjectId(w.id); setEditingTask(t); setTaskModalOpen(true) }}
                         onDeleteTask={(t) => setDeletingTask(t)}
@@ -292,13 +292,13 @@ export function NonNpiPage() {
 
       <ConfirmDialog
         open={!!archivingWork}
-        title={`Move ${archivingWork ? formatCategoryHeader(archivingWork.project) : ''} to Archived?`}
-        confirmLabel={`Confirm & Archive (${archivingWork?.nextStatus ?? ''})`}
+        title={`Archive ${archivingWork ? formatCategoryHeader(archivingWork) : ''}?`}
+        confirmLabel="Confirm & Archive"
         onCancel={() => setArchivingWork(undefined)}
         onConfirm={async () => {
           if (!archivingWork) return
           try {
-            await updateProject(archivingWork.project.id, { ...archivingWork.project, status: archivingWork.nextStatus })
+            await archiveProject(archivingWork.id)
             setArchivingWork(undefined)
           } catch (e) {
             setError(errorMessage(e))
@@ -307,7 +307,7 @@ export function NonNpiPage() {
         }}
         message={
           <>
-            Changing the status of <b>{archivingWork ? formatCategoryHeader(archivingWork.project) : ''} ({archivingWork?.project.name})</b> to <b>{archivingWork?.nextStatus}</b> will move it to the <b>Archived</b> tab and lock its running number permanently. <b>This action is non-returnable.</b> Proceed?
+            Move <b>{archivingWork ? formatCategoryHeader(archivingWork) : ''} ({archivingWork?.name})</b> to the <b>Archived</b> tab and lock its running number permanently? <b>This action cannot be undone.</b>
           </>
         }
       />
@@ -334,7 +334,7 @@ function NonNpiWorkGroup({
   onToggleCollapse: () => void
   onEditWork: () => void
   onDeleteWork: () => void
-  onRequestArchive: (nextStatus: ProjectStatus) => void
+  onRequestArchive: () => void
   onAddTask: () => void
   onEditTask: (t: Task) => void
   onDeleteTask: (t: Task) => void
@@ -387,10 +387,6 @@ function NonNpiWorkGroup({
             options={PROJECT_STATUSES}
             onChange={async (next) => {
               const nextStatus = next as ProjectStatus
-              if (isArchivedStatus(nextStatus)) {
-                onRequestArchive(nextStatus)
-                return
-              }
               try { await updateProject(p.id, { ...p, status: nextStatus }) } catch (e) { onError(errorMessage(e)) }
             }}
           />
@@ -400,6 +396,9 @@ function NonNpiWorkGroup({
         </td>
         <td className="px-2 py-2.5 whitespace-nowrap">
           <div className="flex gap-1">
+            <Button variant="ghost" size="sm" title="Archive Non-NPI work" onClick={onRequestArchive}>
+              <Archive className="h-3.5 w-3.5 text-amber-600" />
+            </Button>
             <Button variant="ghost" size="sm" aria-label="Edit Non-NPI work" onClick={onEditWork}>
               <Pencil className="h-3.5 w-3.5" />
             </Button>

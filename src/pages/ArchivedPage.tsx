@@ -6,7 +6,7 @@ import { usePersistedState } from '@/hooks/usePersistedState'
 import {
   ARCHIVED_PROJECT_STATUSES,
   HW_TYPES,
-  isArchivedStatus,
+  isArchivedProject,
   type PetRecord,
   type PoRecord,
   type Project,
@@ -73,7 +73,7 @@ export function ArchivedPage() {
       }
     }
     return (projects ?? [])
-      .filter((p) => isArchivedStatus(p.status))
+      .filter((p) => isArchivedProject(p))
       .filter((p) => !hwType || (p.hwType || 'FT') === hwType)
       .filter((p) => !status || p.status === status)
       .filter((p) => {
@@ -113,7 +113,7 @@ export function ArchivedPage() {
       <div className="flex flex-wrap items-center gap-2">
         <Input placeholder="Search archived HRS, device, deliverable, MPN, PO…" value={search} onChange={(e) => setSearch(e.target.value)} className="!w-72" />
         <Select className="!w-36" value={hwType} onChange={(e) => setHwType(e.target.value)} options={[{ value: '', label: 'All HW types' }, ...HW_TYPES]} />
-        <Select className="!w-44" value={status} onChange={(e) => setStatus(e.target.value)} options={[{ value: '', label: 'Completed & Cancelled' }, ...ARCHIVED_PROJECT_STATUSES]} />
+        <Select className="!w-44" value={status} onChange={(e) => setStatus(e.target.value)} options={[{ value: '', label: 'All statuses' }, ...ARCHIVED_PROJECT_STATUSES]} />
         <Button className="ml-auto" onClick={() => exportReport('Archived')} disabled={rows.length === 0}>
           <FileSpreadsheet className="h-4 w-4" /> Export All Archived
         </Button>
@@ -125,7 +125,7 @@ export function ArchivedPage() {
         {rows.length === 0 ? (
           <EmptyState
             title="No archived projects"
-            hint='Projects marked as "Completed" or "Cancelled" are automatically moved here.'
+            hint='Click the "Archive" button inside any project to move it here permanently.'
           />
         ) : (
           <div className="overflow-x-auto">

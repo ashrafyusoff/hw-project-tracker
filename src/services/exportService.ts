@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx'
 import { db } from '@/database/db'
-import { isArchivedStatus, type Milestone, type PoRecord, type Project, type Task, type Workstream } from '@/types'
+import { isArchivedProject, type Milestone, type PoRecord, type Project, type Task, type Workstream } from '@/types'
 import { todayStr } from '@/utils/helpers'
 import { getIsoWeek, getMondayOfWeek, parseYmd, toYmd, addDays } from '@/features/overview/WorkWeekCalendar'
 import { downloadBlob } from './backupService'
@@ -97,7 +97,7 @@ export async function buildSheets(name: ReportName): Promise<Record<string, Row[
         db.tasks.toArray(),
         db.milestones.toArray(),
       ])
-      const archivedProjects = allProjects.filter((p) => isArchivedStatus(p.status))
+      const archivedProjects = allProjects.filter((p) => isArchivedProject(p))
       const archivedIds = new Set(archivedProjects.map((p) => p.id))
       const deliverables = allDeliverables.filter((w) => archivedIds.has(w.projectId))
       const tasks = allTasks.filter((t) => archivedIds.has(t.projectId))

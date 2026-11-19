@@ -1,28 +1,28 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Archive, ArrowLeft, Calendar, Cpu, FileSpreadsheet, GitBranch, Layers, ListChecks, Pencil, Plus, Server, Trash2, X } from 'lucide-react'
+import { Archive, ArrowLeft, Calendar, CheckSquare, ChevronDown, ChevronRight, Cpu, FileSpreadsheet, GitBranch, Layers, ListChecks, Pencil, Plus, Server, Star, Trash2, X } from 'lucide-react'
 import { db } from '@/database/db'
-import { isArchivedStatus, type Milestone, type Supplier, type Task, type Workstream } from '@/types'
+import { MILESTONE_STATUSES, PRIORITIES, TASK_STATUSES, isArchivedProject, type Milestone, type MilestoneStatus, type Priority, type Supplier, type Task, type TaskStatus, type Workstream } from '@/types'
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Loading, Select } from '@/components/ui'
 import { TabSaveControls } from '@/components/TabSaveControls'
 import { ProjectForm } from '@/features/projects/ProjectForm'
 import { WorkstreamForm } from '@/features/projects/WorkstreamForm'
-import { DeliverableTasksModal } from '@/features/projects/DeliverableTasksModal'
 import { ProjectGanttChart } from '@/features/projects/ProjectGanttChart'
 import { TaskForm } from '@/features/tasks/TaskForm'
 import { MilestoneForm } from '@/features/tasks/MilestoneForm'
-import { TaskTable } from '@/features/tasks/TaskTable'
+import { DeadlineBadge, TaskTable, isOverdueTask } from '@/features/tasks/TaskTable'
 import { MilestoneTable } from '@/features/tasks/MilestoneTable'
 import { CommercialBadge, buildDeliverableCommercialRows, normalizeHardwareStatus } from '@/features/commercial/CommercialForms'
-import { InlineCommercialCell } from './ProjectsPage'
+import { InlineCommercialCell, InlineStatusSelect } from './ProjectsPage'
 import { exportSingleProjectReport } from '@/services/exportService'
-import { deleteTask } from '@/services/taskService'
-import { deleteMilestone } from '@/services/milestoneService'
-import { deleteProject } from '@/services/projectService'
-import { deleteWorkstream, updateWorkstream } from '@/services/workstreamService'
+import { createTasksFromDeliverableTemplate } from '@/services/deliverableTemplateService'
+import { deleteTask, updateTask } from '@/services/taskService'
+import { deleteMilestone, updateMilestone } from '@/services/milestoneService'
+import { archiveProject, deleteProject } from '@/services/projectService'
+import { deleteWorkstream } from '@/services/workstreamService'
 import { linkSupplierToProject, unlinkSupplierFromProject } from '@/services/supplierService'
-import { daysUntil, formatDate, formatDateTime, isPast } from '@/utils/helpers'
+import { daysUntil, formatDate, formatDateTime, isPast, todayStr } from '@/utils/helpers'
 import { errorMessage } from '@/utils/validation'
 
 const TABS = ['Overview', 'Deliverables & Commercial', 'Tasks', 'Suppliers', 'Milestones', 'Activity History'] as const
@@ -81,12 +81,14 @@ export function ProjectDetailPage() {
   }, [searchParams])
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [archiveOpen, setArchiveOpen] = useState(false)
   const [wsOpen, setWsOpen] = useState(false)
   const [wsEditing, setWsEditing] = useState<Workstream | undefined>()
   const [wsDeleting, setWsDeleting] = useState<Workstream | undefined>()
-  const [wsTasksTarget, setWsTasksTarget] = useState<Workstream | undefined>()
+  const [expandedDelivTasks, setExpandedDelivTasks] = useState<Record<string, boolean>>({})
   const [taskOpen, setTaskOpen] = useState(false)
   const [taskEditing, setTaskEditing] = useState<Task | undefined>()
+  const [taskWorkstreamId, setTaskWorkstreamId] = useState('')
   const [taskDeleting, setTaskDeleting] = useState<Task | undefined>()
   const [msOpen, setMsOpen] = useState(false)
   const [msEditing, setMsEditing] = useState<Milestone | undefined>()
@@ -124,7 +126,7 @@ export function ProjectDetailPage() {
     Milestones: milestones.length,
   })[t as string]
 
-  const archived = isArchivedStatus(p.status)
+  const archived = isArchivedProject(p)
   const detailFingerprint = JSON.stringify({
     project: p,
     workstreams,
@@ -157,6 +159,11 @@ export function ProjectDetailPage() {
           <Button onClick={() => run(() => exportSingleProjectReport(p.id))}>
             <FileSpreadsheet className="h-4 w-4 text-emerald-600" /> Export to Excel
           </Button>
+          {!archived && (
+            <Button onClick={() => setArchiveOpen(true)}>
+              <Archive className="h-4 w-4 text-amber-600" /> Archive
+            </Button>
+          )}
           {!archived && <Button onClick={() => setEditOpen(true)}><Pencil className="h-4 w-4" /> Edit</Button>}
           <Button onClick={() => setDeleteOpen(true)}><Trash2 className="h-4 w-4 text-red-500" /> Delete</Button>
           {!archived && (
@@ -294,7 +301,7 @@ export function ProjectDetailPage() {
           {workstreams.length === 0 ? (
             <EmptyState title="No deliverables yet" hint="Add PCB, Socket, Handler Kit, Stiffener, Probe Card, Probe Head, or Others deliverables for this project." />
           ) : (
-            <Table head={['Deliverable Branch', 'MPN', 'Supplier', 'Delivery Dates', 'Hardware Status (Quote · PET · PO)', 'Remarks', ...(archived ? [] : ['Actions'])]}>
+            <Table head={['Deliverable Branch / Tasks', 'MPN / Priority', 'Supplier', 'Delivery / Due Dates', 'Hardware Status (Quote · PET · PO)', 'Remarks', ...(archived ? [] : ['Actions'])]}>
               {workstreams.map((w, idx) => {
                 const isLast = idx === workstreams.length - 1
                 const comm = commercialRows.find((r) => r.workstream.id === w.id)
@@ -303,61 +310,254 @@ export function ProjectDetailPage() {
                 const po = comm?.po
                 const hwStatus = normalizeHardwareStatus(po)
                 const late = po && !po.actualDelivery && isPast(po.expectedDelivery) && hwStatus !== 'Delivered'
+                const wTasks = tasks
+                  .filter((t) => t.workstreamId === w.id)
+                  .sort((a, b) => (a.startDate || a.dueDate || '9999').localeCompare(b.startDate || b.dueDate || '9999') || a.createdAt.localeCompare(b.createdAt))
+                const wMilestones = milestones
+                  .filter((m) => m.workstreamId === w.id)
+                  .sort((a, b) => (a.targetDate || '9999').localeCompare(b.targetDate || '9999'))
+                const wTotalItems = wTasks.length + wMilestones.length
+                const isDelivExpanded = !!expandedDelivTasks[w.id]
+                const toggleDeliv = () => setExpandedDelivTasks((prev) => ({ ...prev, [w.id]: !prev[w.id] }))
+
                 return (
-                  <tr key={w.id}>
-                    <td className="font-medium whitespace-nowrap">
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className="font-mono text-slate-400 font-bold">{isLast ? '└─' : '├─'}</span>
-                        <GitBranch className="h-3.5 w-3.5 text-primary shrink-0" />
-                        <span>{deliverableDisplayName(w)}</span>
-                      </span>
-                    </td>
-                    <td className="font-mono text-xs text-slate-600 whitespace-nowrap">{w.mpn || '—'}</td>
-                    <td>{supName(w.supplierId)}</td>
-                    <td className="whitespace-nowrap text-xs">
-                      {po && (po.expectedDelivery || po.actualDelivery) ? (
-                        <div className={late ? 'text-red-600 font-semibold' : 'text-slate-600'}>
-                          Exp: {formatDate(po.expectedDelivery)}
-                          {po.actualDelivery && <span className="block text-[11px] text-emerald-700">Act: {formatDate(po.actualDelivery)}</span>}
-                        </div>
-                      ) : '—'}
-                    </td>
-                    <td>
-                      {archived ? (
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {q?.number && <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[11px] text-blue-900"><b>Quote:</b> {q.number}</span>}
-                          {pet?.reference && <span className="rounded border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[11px] text-indigo-900"><b>PET:</b> {pet.reference}</span>}
-                          {po?.number && <span className="rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-900"><b>PO:</b> {po.number}</span>}
-                          <CommercialBadge status={hwStatus} />
-                        </div>
-                      ) : (
-                        <InlineCommercialCell workstream={w} comm={comm} onError={setError} />
-                      )}
-                    </td>
-                    <td className="text-slate-500 max-w-xs truncate">{w.remarks || po?.remarks || '—'}</td>
-                    {!archived && (
-                      <td>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            className="!h-7 !px-2 text-[11px]"
-                            title="View & manage tasks for this deliverable"
-                            onClick={() => setWsTasksTarget(w)}
+                  <Fragment key={w.id}>
+                    <tr>
+                      <td className="font-medium whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="font-mono text-slate-400 font-bold">{isLast && !isDelivExpanded ? '└─' : '├─'}</span>
+                          <button
+                            type="button"
+                            onClick={toggleDeliv}
+                            className="p-0.5 rounded hover:bg-slate-200 text-slate-500"
+                            title={isDelivExpanded ? 'Hide deliverable tasks' : 'Show deliverable tasks inline'}
                           >
-                            <ListChecks className="h-3.5 w-3.5 text-primary" />
-                            Tasks ({tasks.filter((t) => t.workstreamId === w.id).length})
-                          </Button>
-                          <Button variant="ghost" size="sm" title="Edit Deliverable & Commercial" onClick={() => { setWsEditing(w); setWsOpen(true) }}>
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button variant="ghost" size="sm" aria-label="Delete deliverable" onClick={() => setWsDeleting(w)}>
-                            <Trash2 className="h-3.5 w-3.5 text-red-500" />
-                          </Button>
-                        </div>
+                            {isDelivExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                          </button>
+                          <GitBranch className="h-3.5 w-3.5 text-primary shrink-0" />
+                          <button type="button" onClick={toggleDeliv} className="hover:text-primary hover:underline">
+                            {deliverableDisplayName(w)}
+                          </button>
+                        </span>
                       </td>
+                      <td className="font-mono text-xs text-slate-600 whitespace-nowrap">{w.mpn || '—'}</td>
+                      <td>{supName(w.supplierId)}</td>
+                      <td className="whitespace-nowrap text-xs">
+                        {po && (po.expectedDelivery || po.actualDelivery) ? (
+                          <div className={late ? 'text-red-600 font-semibold' : 'text-slate-600'}>
+                            Exp: {formatDate(po.expectedDelivery)}
+                            {po.actualDelivery && <span className="block text-[11px] text-emerald-700">Act: {formatDate(po.actualDelivery)}</span>}
+                          </div>
+                        ) : '—'}
+                      </td>
+                      <td>
+                        {archived ? (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {q?.number && <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[11px] text-blue-900"><b>Quote:</b> {q.number}</span>}
+                            {pet?.reference && <span className="rounded border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[11px] text-indigo-900"><b>PET:</b> {pet.reference}</span>}
+                            {po?.number && <span className="rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-900"><b>PO:</b> {po.number}</span>}
+                            <CommercialBadge status={hwStatus} />
+                          </div>
+                        ) : (
+                          <InlineCommercialCell workstream={w} comm={comm} onError={setError} />
+                        )}
+                      </td>
+                      <td className="text-slate-500 max-w-xs truncate">{w.remarks || po?.remarks || '—'}</td>
+                      {!archived && (
+                        <td>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant={isDelivExpanded ? 'primary' : 'secondary'}
+                              size="sm"
+                              className="!h-7 !px-2.5 text-[11px]"
+                              title="Show or hide tasks for this deliverable directly below"
+                              onClick={toggleDeliv}
+                            >
+                              <ListChecks className="h-3.5 w-3.5" />
+                              Tasks ({wTotalItems})
+                              {isDelivExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="!h-7 !px-1.5 text-[11px] text-primary"
+                              title="Add task to this deliverable"
+                              onClick={() => {
+                                setTaskEditing(undefined)
+                                setTaskWorkstreamId(w.id)
+                                setTaskOpen(true)
+                              }}
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="sm" title="Edit Deliverable & Commercial" onClick={() => { setWsEditing(w); setWsOpen(true) }}>
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="sm" aria-label="Delete deliverable" onClick={() => setWsDeleting(w)}>
+                              <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                            </Button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+
+                    {isDelivExpanded && (
+                      <>
+                        {wTotalItems === 0 ? (
+                          <tr className="bg-slate-50/50 text-xs">
+                            <td colSpan={archived ? 6 : 7} className="pl-12 py-2 text-slate-500">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span>No tasks for <b>{deliverableDisplayName(w)}</b> yet.</span>
+                                {!archived && (
+                                  <div className="flex items-center gap-1.5">
+                                    <Button
+                                      size="sm"
+                                      variant="secondary"
+                                      className="!h-6 !px-2.5 text-[11px]"
+                                      onClick={() =>
+                                        run(async () => {
+                                          await createTasksFromDeliverableTemplate({
+                                            projectId: w.projectId,
+                                            workstreamId: w.id,
+                                            supplierId: w.supplierId,
+                                            categoryOrName: w.name || w.category,
+                                            startDate: todayStr(),
+                                          })
+                                        })
+                                      }
+                                    >
+                                      <Layers className="h-3 w-3" /> Load Template Tasks
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="primary"
+                                      className="!h-6 !px-2.5 text-[11px]"
+                                      onClick={() => {
+                                        setTaskEditing(undefined)
+                                        setTaskWorkstreamId(w.id)
+                                        setTaskOpen(true)
+                                      }}
+                                    >
+                                      <Plus className="h-3 w-3" /> Add Task
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ) : (
+                          <>
+                            {wMilestones.map((m) => (
+                              <tr key={`deliv-ms-${m.id}`} className="bg-purple-50/25 hover:bg-purple-50/50 text-xs">
+                                <td className="pl-12 whitespace-nowrap">
+                                  <span className="inline-flex items-center gap-1.5">
+                                    <span className="font-mono text-slate-300 text-xs">├─</span>
+                                    <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-400 shrink-0" />
+                                    <button
+                                      type="button"
+                                      onClick={() => { setMsEditing(m); setMsOpen(true) }}
+                                      className="font-semibold text-slate-800 hover:text-primary hover:underline text-left"
+                                    >
+                                      {m.name}
+                                    </button>
+                                  </span>
+                                </td>
+                                <td>
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-purple-500 bg-purple-100/95 px-2 py-0.5 text-[10px] font-semibold text-purple-950">
+                                    Milestone · 1d
+                                  </span>
+                                </td>
+                                <td className="text-slate-500">{supName(w.supplierId)}</td>
+                                <td className="whitespace-nowrap text-slate-600">
+                                  Target: <span className="font-semibold text-slate-800">{formatDate(m.targetDate)}</span>
+                                </td>
+                                <td>
+                                  <InlineStatusSelect
+                                    value={m.status}
+                                    options={MILESTONE_STATUSES}
+                                    onChange={(next) => run(() => updateMilestone(m.id, { ...m, status: next as MilestoneStatus }))}
+                                  />
+                                </td>
+                                <td className="text-slate-500 truncate max-w-xs">{m.remarks || '—'}</td>
+                                {!archived && (
+                                  <td>
+                                    <div className="flex items-center gap-1">
+                                      <Button variant="ghost" size="sm" title="Edit milestone" onClick={() => { setMsEditing(m); setMsOpen(true) }}>
+                                        <Pencil className="h-3.5 w-3.5" />
+                                      </Button>
+                                      <Button variant="ghost" size="sm" title="Delete milestone" onClick={() => setMsDeleting(m)}>
+                                        <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                                      </Button>
+                                    </div>
+                                  </td>
+                                )}
+                              </tr>
+                            ))}
+                            {wTasks.map((t, tIdx) => {
+                              const isLastTask = tIdx === wTasks.length - 1
+                              return (
+                                <tr key={t.id} className="bg-slate-50/45 hover:bg-blue-50/40 text-xs">
+                                  <td className="pl-12 whitespace-nowrap">
+                                    <span className="inline-flex items-center gap-1.5">
+                                      <span className="font-mono text-slate-300 text-xs">{isLastTask ? '└─' : '├─'}</span>
+                                      <CheckSquare className="h-3.5 w-3.5 text-primary shrink-0" />
+                                      <span className="text-[10px] font-semibold text-slate-400">#{tIdx + 1}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => { setTaskEditing(t); setTaskWorkstreamId(t.workstreamId); setTaskOpen(true) }}
+                                        className="font-semibold text-slate-800 hover:text-primary hover:underline text-left"
+                                      >
+                                        {t.name}
+                                      </button>
+                                    </span>
+                                  </td>
+                                  <td className="whitespace-nowrap">
+                                    <div className="inline-flex items-center gap-1.5">
+                                      <InlineStatusSelect
+                                        value={t.priority}
+                                        options={PRIORITIES}
+                                        onChange={(next) => run(() => updateTask(t.id, { ...t, priority: next as Priority }))}
+                                      />
+                                      <span className="text-[11px] text-slate-400 font-medium">{t.workingDays ?? 1}d</span>
+                                    </div>
+                                  </td>
+                                  <td className="text-slate-500">{supName(w.supplierId)}</td>
+                                  <td className="whitespace-nowrap">
+                                    <span className={isOverdueTask(t) ? 'text-red-600 font-semibold' : 'text-slate-600'}>
+                                      {formatDate(t.startDate)} → <span className="font-semibold text-slate-800">{formatDate(t.dueDate)}</span>
+                                    </span>
+                                  </td>
+                                  <td>
+                                    <div className="inline-flex items-center gap-1.5">
+                                      <InlineStatusSelect
+                                        value={t.status}
+                                        options={TASK_STATUSES}
+                                        onChange={(next) => run(() => updateTask(t.id, { ...t, status: next as TaskStatus }))}
+                                      />
+                                      <DeadlineBadge task={t} />
+                                    </div>
+                                  </td>
+                                  <td className="text-slate-500 truncate max-w-xs">{t.remarks || '—'}</td>
+                                  {!archived && (
+                                    <td>
+                                      <div className="flex items-center gap-1">
+                                        <Button variant="ghost" size="sm" title="Edit task" onClick={() => { setTaskEditing(t); setTaskWorkstreamId(t.workstreamId); setTaskOpen(true) }}>
+                                          <Pencil className="h-3.5 w-3.5" />
+                                        </Button>
+                                        <Button variant="ghost" size="sm" title="Delete task" onClick={() => setTaskDeleting(t)}>
+                                          <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                                        </Button>
+                                      </div>
+                                    </td>
+                                  )}
+                                </tr>
+                              )
+                            })}
+                          </>
+                        )}
+                      </>
                     )}
-                  </tr>
+                  </Fragment>
                 )
               })}
             </Table>
@@ -366,10 +566,10 @@ export function ProjectDetailPage() {
       )}
 
       {tab === 'Tasks' && (
-        <Card title="Tasks" className="[&>div]:!p-0" action={<Button size="sm" variant="primary" onClick={() => { setTaskEditing(undefined); setTaskOpen(true) }}><Plus className="h-3.5 w-3.5" /> Add Task</Button>}>
+        <Card title="Tasks" className="[&>div]:!p-0" action={<Button size="sm" variant="primary" onClick={() => { setTaskEditing(undefined); setTaskWorkstreamId(''); setTaskOpen(true) }}><Plus className="h-3.5 w-3.5" /> Add Task</Button>}>
           {tasks.length === 0 ? <EmptyState title="No tasks for this project" hint="Add a task to start tracking work." /> : (
             <TaskTable tasks={[...tasks].sort((x, y) => (x.dueDate || '9999').localeCompare(y.dueDate || '9999'))} projects={[p]} workstreams={workstreams} suppliers={suppliers} showProject={false}
-              onEdit={(t) => { setTaskEditing(t); setTaskOpen(true) }} onDelete={setTaskDeleting} />
+              onEdit={(t) => { setTaskEditing(t); setTaskWorkstreamId(t.workstreamId); setTaskOpen(true) }} onDelete={setTaskDeleting} />
           )}
         </Card>
       )}
@@ -423,7 +623,7 @@ export function ProjectDetailPage() {
         </Card>
       )}
 
-      <TaskForm open={taskOpen} task={taskEditing} defaultProjectId={p.id} onClose={() => setTaskOpen(false)} />
+      <TaskForm open={taskOpen} task={taskEditing} defaultProjectId={p.id} defaultWorkstreamId={taskWorkstreamId || undefined} onClose={() => { setTaskOpen(false); setTaskEditing(undefined) }} />
       <MilestoneForm open={msOpen} milestone={msEditing} defaultProjectId={p.id} onClose={() => setMsOpen(false)} />
       <ConfirmDialog open={!!taskDeleting} title="Delete task?" onCancel={() => setTaskDeleting(undefined)}
         onConfirm={() => run(async () => { await deleteTask(taskDeleting!.id); setTaskDeleting(undefined) })}
@@ -433,10 +633,21 @@ export function ProjectDetailPage() {
         message={<>Delete milestone <b>{msDeleting?.name}</b>?</>} />
       <ProjectForm open={editOpen} project={p} onClose={() => setEditOpen(false)} />
       <WorkstreamForm open={wsOpen} projectId={p.id} workstream={wsEditing} suppliers={suppliers} onClose={() => setWsOpen(false)} />
-      <DeliverableTasksModal open={!!wsTasksTarget} workstream={wsTasksTarget} project={p} onClose={() => setWsTasksTarget(undefined)} />
       <ConfirmDialog open={!!wsDeleting} title="Delete deliverable?" onCancel={() => setWsDeleting(undefined)}
         onConfirm={() => run(async () => { await deleteWorkstream(wsDeleting!.id); setWsDeleting(undefined) })}
         message={<>Delete deliverable <b>{wsDeleting ? deliverableDisplayName(wsDeleting) : ''}</b>? Tasks and milestones linked to it are kept but no longer assigned to a deliverable.</>} />
+      <ConfirmDialog
+        open={archiveOpen}
+        title={`Archive HRS ${p.code}?`}
+        confirmLabel="Confirm & Archive"
+        onCancel={() => setArchiveOpen(false)}
+        onConfirm={() => run(async () => { await archiveProject(p.id); setArchiveOpen(false); navigate('/archived') })}
+        message={
+          <>
+            Move <b>HRS {p.code}{p.deviceName ? ` · ${p.deviceName}` : ''}</b> and all its deliverables, tasks, and milestones to the <b>Archived</b> tab? <b>This action cannot be undone.</b>
+          </>
+        }
+      />
       <ConfirmDialog open={deleteOpen} title="Delete project?" onCancel={() => setDeleteOpen(false)}
         onConfirm={() => run(async () => { await deleteProject(p.id); navigate(archived ? '/archived' : '/projects') })}
         message={<>This permanently deletes <b>HRS {p.code}</b> and everything linked to it. This cannot be undone.</>} />

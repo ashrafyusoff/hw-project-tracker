@@ -1,13 +1,15 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { CheckSquare, Cpu, Plus, Square, StickyNote, Trash2 } from 'lucide-react'
+import { CheckSquare, Cpu, FolderKanban, Plus, Square, StickyNote, Trash2 } from 'lucide-react'
 import { useTable } from '@/hooks/useTable'
 import { usePersistedState } from '@/hooks/usePersistedState'
-import type { ActivityLog, Milestone, PetRecord, PoRecord, Project, Quotation, Supplier, Task, Workstream } from '@/types'
-import { HARDWARE_STATUSES, isArchivedStatus } from '@/types'
+import type { Milestone, PetRecord, PoRecord, Project, ProjectStatus, Quotation, Supplier, Task, Workstream } from '@/types'
+import { HARDWARE_STATUSES, PROJECT_STATUSES, isArchivedProject } from '@/types'
 import { Badge, Card, EmptyState, Loading, Button } from '@/components/ui'
-import { daysFromToday, formatDate, formatDateTime, isPast, newId, todayStr } from '@/utils/helpers'
+import { InlineStatusSelect } from './ProjectsPage'
+import { daysFromToday, daysUntil, formatDate, isPast, newId, todayStr } from '@/utils/helpers'
 import { loadSampleData } from '@/services/sampleData'
+import { updateProject } from '@/services/projectService'
 import { WorkWeekCalendar } from '@/features/overview/WorkWeekCalendar'
 import { CommercialBadge, buildDeliverableCommercialRows, normalizeHardwareStatus, rowToCommercialInput } from '@/features/commercial/CommercialForms'
 import { emptyDeliverableCommercial, saveDeliverableCommercial } from '@/services/commercialService'
@@ -31,7 +33,6 @@ export function OverviewPage() {
   const quotations = useTable<Quotation>('quotations')
   const pets = useTable<PetRecord>('petRecords')
   const pos = useTable<PoRecord>('poRecords')
-  const logs = useTable<ActivityLog>('activityLogs')
 
   // Interactive left-slot widget state (Hardware Delivery Radar + Quick Engineering Pinboard)
   const [leftWidgetTab, setLeftWidgetTab] = usePersistedState<'radar' | 'notes'>('npi.overview.leftWidgetTab', 'radar')
@@ -43,7 +44,15 @@ export function OverviewPage() {
   const [newNoteText, setNewNoteText] = useState('')
 
   const npiProjects = useMemo(() => (projects ?? []).filter((p) => !p.isNonNpi), [projects])
-  const activeNpiProjects = useMemo(() => npiProjects.filter((p) => !isArchivedStatus(p.status)), [npiProjects])
+  const activeNpiProjects = useMemo(() => npiProjects.filter((p) => !isArchivedProject(p)), [npiProjects])
+  // Project Status card: all active projects excluding Completed & Cancelled
+  const activeStatusProjects = useMemo(
+    () =>
+      activeNpiProjects
+        .filter((p) => p.status !== 'Completed' && p.status !== 'Cancelled')
+        .sort((a, b) => (a.baselineDate || '9999').localeCompare(b.baselineDate || '9999') || a.code.localeCompare(b.code)),
+    [activeNpiProjects],
+  )
 
   const commercialRows = useMemo(() => {
     if (!workstreams || !quotations || !pets || !pos || !projects || !suppliers) return []
@@ -76,7 +85,7 @@ export function OverviewPage() {
     })
   }, [commercialRows, radarFilter])
 
-  if (!projects || !workstreams || !tasks || !milestones || !suppliers || !quotations || !pets || !pos || !logs) return <Loading />
+  if (!projects || !workstreams || !tasks || !milestones || !suppliers || !quotations || !pets || !pos) return <Loading />
 
   if (projects.length === 0) {
     return (
@@ -94,9 +103,6 @@ export function OverviewPage() {
       </Card>
     )
   }
-
-  // Past 15 activities only
-  const latest15Logs = [...logs].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 15)
 
   function addQuickNote(e: React.FormEvent) {
     e.preventDefault()
@@ -328,27 +334,80 @@ export function OverviewPage() {
           )}
         </Card>
 
-        {/* RIGHT SLOT: Recent Activities (Past 15 Activities Only) */}
+        {/* RIGHT SLOT: Project Status (All Active Projects Excluding Completed) */}
         <Card
-          title={`Recent Activities (Latest ${latest15Logs.length})`}
-          action={<span className="text-xs text-slate-400">Past 15 activities</span>}
+          title={`Project Status (${activeStatusProjects.length})`}
+          action={<span className="text-xs text-slate-400">Active projects (excl. Completed) · Click status to update</span>}
           className="[&>div]:!p-3"
         >
-          {latest15Logs.length === 0 ? (
-            <EmptyState title="No activity yet" />
+          {activeStatusProjects.length === 0 ? (
+            <EmptyState
+              title="No active in-progress projects"
+              hint="All projects are completed or archived."
+            />
           ) : (
-            <ul className="divide-y divide-slate-100 max-h-72 overflow-y-auto pr-1">
-              {latest15Logs.map((l) => (
-                <li key={l.id} className="flex items-center justify-between gap-3 py-1.5 text-xs">
-                  <span className="flex items-center gap-1.5 min-w-0">
-                    <Badge color={l.action === 'Deleted' ? 'red' : l.action === 'Status Changed' ? 'blue' : 'grey'}>{l.action}</Badge>
-                    <Badge color="violet">{l.entity}</Badge>
-                    <span className="truncate text-slate-700">{l.message}</span>
-                  </span>
-                  <span className="text-[11px] text-slate-400 shrink-0">{formatDateTime(l.createdAt)}</span>
-                </li>
-              ))}
-            </ul>
+            <div className="overflow-x-auto max-h-72 overflow-y-auto -mx-3">
+              <table className="w-full text-xs">
+                <thead className="text-[11px] text-slate-500 text-left sticky top-0 bg-white border-b border-slate-100 z-10">
+                  <tr className="whitespace-nowrap">
+                    <th className="px-3 py-1.5 font-semibold">HRS · Device Name</th>
+                    <th className="px-2 py-1.5 font-semibold">HW Type</th>
+                    <th className="px-2 py-1.5 font-semibold">Deliverables</th>
+                    <th className="px-2 py-1.5 font-semibold">HW Required</th>
+                    <th className="px-3 py-1.5 font-semibold">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeStatusProjects.map((p) => {
+                    const pDelivs = workstreams.filter((w) => w.projectId === p.id)
+                    const pTasks = tasks.filter((t) => t.projectId === p.id)
+                    const daysLeft = p.baselineDate ? daysUntil(p.baselineDate) : null
+                    return (
+                      <tr
+                        key={p.id}
+                        onClick={() => navigate(`/projects?project=${p.id}`)}
+                        className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer"
+                      >
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            <FolderKanban className="h-3.5 w-3.5 text-primary shrink-0" />
+                            <span className="font-bold text-primary">{p.code}</span>
+                            <span className="text-slate-400">·</span>
+                            <span className="font-semibold text-slate-800 truncate max-w-[150px]" title={p.deviceName || p.name}>
+                              {p.deviceName || p.name}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-2 py-2 whitespace-nowrap">
+                          <Badge color="blue">{p.hwType || 'FT'}</Badge>
+                        </td>
+                        <td className="px-2 py-2 whitespace-nowrap text-slate-600">
+                          {pDelivs.length} Deliv · {pTasks.length} Tasks
+                        </td>
+                        <td className="px-2 py-2 whitespace-nowrap">
+                          {p.baselineDate ? (
+                            <span className={daysLeft !== null && daysLeft < 0 ? 'text-red-600 font-semibold' : 'text-slate-600'}>
+                              {formatDate(p.baselineDate)}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <InlineStatusSelect
+                            value={p.status}
+                            options={PROJECT_STATUSES}
+                            onChange={async (next) => {
+                              await updateProject(p.id, { ...p, status: next as ProjectStatus })
+                            }}
+                          />
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </Card>
       </div>

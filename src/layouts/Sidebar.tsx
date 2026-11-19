@@ -78,7 +78,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
           ))}
         </nav>
 
-        <div className="flex h-11 items-center px-2.5 border-t border-slate-200/80 shrink-0">
+        <div className="flex h-11 items-center px-2.5 shrink-0">
           <button
             onClick={onToggle}
             className="flex h-8 w-full items-center justify-center gap-1.5 rounded-full liquid-glass-pill px-3 text-xs font-semibold text-slate-600 hover:bg-slate-200/70 transition-colors"

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Calendar, Check, CheckSquare, GripVertical, Layers, Plus, RotateCcw, Save, Star, Trash2 } from 'lucide-react'
 import { PRIORITIES, type Priority } from '@/types'
@@ -35,8 +35,22 @@ export function DeliverablesPage() {
   const [pendingNav, setPendingNav] = useState<{ type: 'route'; to: string } | { type: 'select'; id: string } | null>(null)
   const [draggingSubId, setDraggingSubId] = useState('')
   const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map())
+  const prevRowRects = useRef<Map<string, DOMRect>>(new Map())
+  const lastRowSwapRef = useRef<{ toIdx: number; time: number }>({ toIdx: -1, time: 0 })
+  const ganttTrackRef = useRef<HTMLDivElement>(null)
+  const [measuredTrackWidth, setMeasuredTrackWidth] = useState(0)
 
   const selected = templates.find((t) => t.id === selectedId) ?? templates[0] ?? null
+
+  useEffect(() => {
+    const el = ganttTrackRef.current
+    if (!el) return
+    const update = () => setMeasuredTrackWidth(el.clientWidth)
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [selected?.id, selected?.subTasks.length])
 
   function showSaved(msg: string) {
     setSavedToast(msg)
@@ -146,11 +160,50 @@ export function DeliverablesPage() {
     updateSelectedDraft((t) => ({ ...t, subTasks: [...t.subTasks, nextSub] }))
   }
 
+  function captureRowRects() {
+    const rects = new Map<string, DOMRect>()
+    rowRefs.current.forEach((el, id) => {
+      rects.set(id, el.getBoundingClientRect())
+    })
+    prevRowRects.current = rects
+  }
+
+  // Smooth Apple-style FLIP animation when task rows slide up or down to make space
+  useLayoutEffect(() => {
+    if (prevRowRects.current.size === 0) return
+    const prev = prevRowRects.current
+    prevRowRects.current = new Map()
+    rowRefs.current.forEach((el, id) => {
+      if (id === draggingSubId) return
+      const oldRect = prev.get(id)
+      if (!oldRect) return
+      const newRect = el.getBoundingClientRect()
+      const dy = oldRect.top - newRect.top
+      if (Math.abs(dy) > 1) {
+        el.getAnimations().forEach((a) => a.cancel())
+        el.animate(
+          [
+            { transform: `translateY(${dy}px)` },
+            { transform: 'translateY(0)' },
+          ],
+          {
+            duration: 420,
+            easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+          },
+        )
+      }
+    })
+  }, [selected?.subTasks, draggingSubId])
+
   /** Hold-and-slide reordering: move a task to the position currently under the pointer. */
   function moveSubTaskTo(subId: string, toIdx: number) {
     if (!selected) return
     const from = selected.subTasks.findIndex((s) => s.id === subId)
     if (from < 0 || from === toIdx) return
+    const now = performance.now()
+    if (lastRowSwapRef.current.toIdx === toIdx && now - lastRowSwapRef.current.time < 220) return
+    lastRowSwapRef.current = { toIdx, time: now }
+    captureRowRects()
     const selectedTemplateId = selected.id
     setTemplates((prev) =>
       prev.map((t) => {
@@ -166,30 +219,34 @@ export function DeliverablesPage() {
     setIsDirty(true)
   }
 
-  function rowIndexAtPointer(clientY: number): number {
+  function rowIndexAtPointer(clientY: number, currentSubId: string): number {
     if (!selected) return -1
     const ids = selected.subTasks.map((s) => s.id)
-    let result = -1
+    const fromIdx = ids.indexOf(currentSubId)
+    if (fromIdx < 0) return -1
+
     for (let i = 0; i < ids.length; i++) {
+      if (i === fromIdx) continue
       const el = rowRefs.current.get(ids[i])
       if (!el) continue
       const r = el.getBoundingClientRect()
-      if (clientY < r.top) return result === -1 ? i : result
-      if (clientY <= r.bottom) return i
-      result = i
+      const midY = r.top + r.height / 2
+      if (i < fromIdx && clientY < midY) return i
+      if (i > fromIdx && clientY > midY) return i
     }
-    return result
+    return fromIdx
   }
 
   function handleSlidePointerDown(e: React.PointerEvent<HTMLButtonElement>, subId: string) {
     e.preventDefault()
     e.currentTarget.setPointerCapture(e.pointerId)
+    lastRowSwapRef.current = { toIdx: -1, time: 0 }
     setDraggingSubId(subId)
   }
 
   function handleSlidePointerMove(e: React.PointerEvent<HTMLButtonElement>) {
     if (!draggingSubId) return
-    const target = rowIndexAtPointer(e.clientY)
+    const target = rowIndexAtPointer(e.clientY, draggingSubId)
     if (target >= 0) moveSubTaskTo(draggingSubId, target)
   }
 
@@ -410,8 +467,8 @@ export function DeliverablesPage() {
                               else rowRefs.current.delete(sub.id)
                             }}
                             className={cn(
-                              'border-b border-slate-100 hover:bg-slate-50/70 transition-colors',
-                              draggingSubId === sub.id && 'bg-primary-soft shadow-inner',
+                              'border-b border-slate-100 hover:bg-slate-50/70 transition-all duration-200',
+                              draggingSubId === sub.id && 'bg-primary-soft shadow-md ring-1 ring-inset ring-primary/40 relative z-10',
                             )}
                           >
                             <td className="px-2 py-1.5 whitespace-nowrap">
@@ -550,11 +607,13 @@ export function DeliverablesPage() {
                 {schedule.length === 0 ? (
                   <EmptyState title="No tasks to display" />
                 ) : (() => {
-                  const DAY_W = 24
+                  const MIN_DAY_W = 24
                   const ROW_H = 34
                   const totalWeeks = Math.max(1, Math.ceil(Math.max(totalWorkingDays, 5) / 5))
                   const totalDays = totalWeeks * 5
-                  const trackWidth = totalDays * DAY_W
+                  const minTrackWidth = totalDays * MIN_DAY_W
+                  const trackWidth = Math.max(minTrackWidth, measuredTrackWidth)
+                  const dayW = trackWidth / totalDays
                   const weekBlocks = Array.from({ length: totalWeeks }, (_, wIdx) => {
                     const firstDayDate = addWorkingDays(previewStart, wIdx * 5 + 1)
                     const isoWw = getIsoWeek(parseYmdLocal(firstDayDate))
@@ -567,19 +626,18 @@ export function DeliverablesPage() {
 
                   return (
                     <div className="overflow-x-auto -mx-4 -mb-4 border-t border-slate-200">
-                      <div className="inline-block min-w-full align-top">
+                      <div className="w-full align-top" style={{ minWidth: 235 + minTrackWidth }}>
                         {/* Gantt Header: Left Task/Days column + Right Workweek Header (only WW) */}
                         <div className="flex bg-slate-100 border-b border-slate-200 text-[11px] font-semibold text-slate-600">
                           <div className="w-[235px] shrink-0 px-2.5 py-1.5 border-r border-slate-200 flex items-center justify-between">
                             <span>Task / Milestone</span>
                             <span>Days (Edit)</span>
                           </div>
-                          <div className="shrink-0 flex" style={{ width: trackWidth }}>
+                          <div className="flex-1 flex" style={{ minWidth: minTrackWidth }}>
                             {weekBlocks.map((wb) => (
                               <div
                                 key={wb.wIdx}
-                                style={{ width: 5 * DAY_W }}
-                                className="shrink-0 text-center py-1.5 border-r last:border-r-0 border-slate-300 text-[11px] font-bold text-slate-700"
+                                className="flex-1 text-center py-1.5 border-r last:border-r-0 border-slate-300 text-[11px] font-bold text-slate-700"
                               >
                                 {wb.label}
                               </div>
@@ -638,19 +696,19 @@ export function DeliverablesPage() {
                             })}
                           </div>
 
-                          {/* Right Timeline Track: Exact DAY_W grid + Overlapping Bars + Automatic SVG Dependency Arrows */}
+                          {/* Right Timeline Track: Full-width responsive grid + Overlapping Bars + Automatic SVG Dependency Arrows */}
                           <div
-                            className="relative shrink-0"
-                            style={{ width: trackWidth, height: schedule.length * ROW_H }}
+                            ref={ganttTrackRef}
+                            className="relative flex-1"
+                            style={{ minWidth: minTrackWidth, height: schedule.length * ROW_H }}
                           >
                             {/* Vertical Working Day & Workweek Grid Lines */}
                             <div className="absolute inset-0 flex pointer-events-none">
                               {Array.from({ length: totalDays }, (_, d) => (
                                 <div
                                   key={d}
-                                  style={{ width: DAY_W }}
                                   className={cn(
-                                    'shrink-0 h-full border-r last:border-r-0',
+                                    'flex-1 h-full border-r last:border-r-0',
                                     (d + 1) % 5 === 0 ? 'border-slate-300/80' : 'border-slate-100',
                                   )}
                                 />
@@ -660,8 +718,8 @@ export function DeliverablesPage() {
                             {/* Horizontal Row Dividers & Gantt Bars */}
                             {schedule.map((item) => {
                               const sub = item.subTask
-                              const barLeft = item.startOffsetDays * DAY_W
-                              const barWidth = (sub.kind === 'milestone' ? 1 : Math.max(1, sub.workingDays)) * DAY_W
+                              const barLeft = item.startOffsetDays * dayW
+                              const barWidth = (sub.kind === 'milestone' ? 1 : Math.max(1, sub.workingDays)) * dayW
                               return (
                                 <div
                                   key={sub.id}
@@ -708,9 +766,9 @@ export function DeliverablesPage() {
                                 if (depIdx < 0) return null
                                 const depItem = schedule[depIdx]
 
-                                const x1 = (depItem.endOffsetDays + 1) * DAY_W - 2
+                                const x1 = (depItem.endOffsetDays + 1) * dayW - 2
                                 const y1 = depIdx * ROW_H + ROW_H / 2
-                                const x2 = item.startOffsetDays * DAY_W + 2
+                                const x2 = item.startOffsetDays * dayW + 2
                                 const y2 = idx * ROW_H + ROW_H / 2
                                 const turnY = y1 < y2 ? y1 + ROW_H / 2 : y1 - ROW_H / 2
 
