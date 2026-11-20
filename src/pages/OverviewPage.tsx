@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { CheckSquare, Cpu, FolderKanban, Plus, Square, StickyNote, Trash2 } from 'lucide-react'
 import { useTable } from '@/hooks/useTable'
@@ -42,6 +42,30 @@ export function OverviewPage() {
     { id: 'sample-note-2', text: 'Follow up PCB impedance coupon report with vendor', done: false, createdAt: todayStr() },
   ])
   const [newNoteText, setNewNoteText] = useState('')
+  const radarTabBtnRef = useRef<HTMLButtonElement>(null)
+  const notesTabBtnRef = useRef<HTMLButtonElement>(null)
+  const [widgetPill, setWidgetPill] = useState<{ left: number; width: number; height: number; ready: boolean }>({
+    left: 0,
+    width: 0,
+    height: 0,
+    ready: false,
+  })
+
+  useLayoutEffect(() => {
+    const update = () => {
+      const btn = leftWidgetTab === 'radar' ? radarTabBtnRef.current : notesTabBtnRef.current
+      if (!btn) return
+      setWidgetPill({
+        left: btn.offsetLeft,
+        width: btn.offsetWidth,
+        height: btn.offsetHeight,
+        ready: true,
+      })
+    }
+    update()
+    const raf = requestAnimationFrame(update)
+    return () => cancelAnimationFrame(raf)
+  }, [leftWidgetTab, projects?.length, workstreams?.length, quickNotes.length])
 
   const npiProjects = useMemo(() => (projects ?? []).filter((p) => !p.isNonNpi), [projects])
   const activeNpiProjects = useMemo(() => npiProjects.filter((p) => !isArchivedProject(p)), [npiProjects])
@@ -131,21 +155,36 @@ export function OverviewPage() {
           title="Hardware Delivery Radar & Quick Pinboard"
           className="[&>div]:!p-3"
           action={
-            <div className="inline-flex items-center rounded border border-slate-200 bg-slate-50 p-0.5 text-[11px]">
+            <div className="relative inline-flex items-center rounded-full liquid-glass-pill p-1 text-[11px]">
+              {widgetPill.ready && (
+                <div
+                  aria-hidden="true"
+                  style={{
+                    transform: `translate3d(${widgetPill.left}px, 0, 0)`,
+                    width: widgetPill.width,
+                    height: widgetPill.height,
+                    transition:
+                      'transform 360ms cubic-bezier(0.22, 1, 0.36, 1), width 300ms cubic-bezier(0.22, 1, 0.36, 1)',
+                  }}
+                  className="pointer-events-none absolute left-0 top-1 rounded-full bg-primary shadow-sm ring-1 ring-white/25"
+                />
+              )}
               <button
+                ref={radarTabBtnRef}
                 type="button"
                 onClick={() => setLeftWidgetTab('radar')}
-                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded font-medium transition-colors ${
-                  leftWidgetTab === 'radar' ? 'bg-primary text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                className={`relative z-10 inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-semibold transition-colors duration-200 ${
+                  leftWidgetTab === 'radar' ? 'text-white' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 <Cpu className="h-3 w-3" /> HW Delivery Radar ({commercialRows.length})
               </button>
               <button
+                ref={notesTabBtnRef}
                 type="button"
                 onClick={() => setLeftWidgetTab('notes')}
-                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded font-medium transition-colors ${
-                  leftWidgetTab === 'notes' ? 'bg-primary text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                className={`relative z-10 inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-semibold transition-colors duration-200 ${
+                  leftWidgetTab === 'notes' ? 'text-white' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 <StickyNote className="h-3 w-3" /> Quick Pinboard ({quickNotes.filter((n) => !n.done).length})
@@ -153,47 +192,48 @@ export function OverviewPage() {
             </div>
           }
         >
-          {leftWidgetTab === 'radar' ? (
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-1.5">
-                <div className="flex flex-wrap items-center gap-1 text-[11px]">
-                  {(
-                    [
-                      { id: 'all', label: `All (${commercialRows.length})` },
-                      { id: 'need_po', label: `Need PO (${commercialRows.filter((r) => !r.po?.number).length})` },
-                      {
-                        id: 'in_transit',
-                        label: `Design / Fab / Delivery (${
-                          commercialRows.filter((r) => {
-                            const s = normalizeHardwareStatus(r.po)
-                            return s === 'Design' || s === 'Fabrication' || s === 'In Delivery'
-                          }).length
-                        })`,
-                      },
-                      {
-                        id: 'delivered',
-                        label: `Delivered (${commercialRows.filter((r) => normalizeHardwareStatus(r.po) === 'Delivered').length})`,
-                      },
-                    ] as const
-                  ).map((f) => (
-                    <button
-                      key={f.id}
-                      type="button"
-                      onClick={() => setRadarFilter(f.id)}
-                      className={`rounded-full px-2 py-0.5 font-medium border transition-colors ${
-                        radarFilter === f.id
-                          ? 'border-primary bg-primary-soft text-primary'
-                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                      }`}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
+          <div className="h-[330px] flex flex-col">
+            {leftWidgetTab === 'radar' ? (
+              <div className="flex flex-col gap-2 h-full min-h-0">
+                <div className="flex flex-wrap items-center justify-between gap-1.5 shrink-0">
+                  <div className="flex flex-wrap items-center gap-1 text-[11px]">
+                    {(
+                      [
+                        { id: 'all', label: `All (${commercialRows.length})` },
+                        { id: 'need_po', label: `Need PO (${commercialRows.filter((r) => !r.po?.number).length})` },
+                        {
+                          id: 'in_transit',
+                          label: `Design / Fab / Delivery (${
+                            commercialRows.filter((r) => {
+                              const s = normalizeHardwareStatus(r.po)
+                              return s === 'Design' || s === 'Fabrication' || s === 'In Delivery'
+                            }).length
+                          })`,
+                        },
+                        {
+                          id: 'delivered',
+                          label: `Delivered (${commercialRows.filter((r) => normalizeHardwareStatus(r.po) === 'Delivered').length})`,
+                        },
+                      ] as const
+                    ).map((f) => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => setRadarFilter(f.id)}
+                        className={`rounded-full px-2 py-0.5 font-medium border transition-colors ${
+                          radarFilter === f.id
+                            ? 'border-primary bg-primary-soft text-primary'
+                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="text-[10px] text-slate-400">Click status badges to update live</span>
                 </div>
-                <span className="text-[10px] text-slate-400">Click status badges to update live</span>
-              </div>
 
-              <div className="overflow-x-auto max-h-60 overflow-y-auto -mx-3">
+                <div className="flex-1 min-h-0 overflow-x-auto overflow-y-auto -mx-3">
                 {filteredRadarRows.length === 0 ? (
                   <p className="py-8 text-center text-xs text-slate-400">No hardware deliverables match this filter.</p>
                 ) : (
@@ -228,11 +268,11 @@ export function OverviewPage() {
                             <td className="px-2 py-1.5 text-slate-600 truncate max-w-[110px]">{row.supplierName}</td>
                             <td className="px-2 py-1.5 whitespace-nowrap">
                               {po?.number ? (
-                                <span className="rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-900">
+                                <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[10px] font-medium text-emerald-900">
                                   PO: {po.number}
                                 </span>
                               ) : row.quotation?.number ? (
-                                <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-900">
+                                <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[10px] font-medium text-blue-900">
                                   Q: {row.quotation.number}
                                 </span>
                               ) : (
@@ -276,13 +316,13 @@ export function OverviewPage() {
                 )}
               </div>
 
-              <div className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[10px] leading-relaxed text-slate-500">
+              <div className="shrink-0 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[10px] leading-relaxed text-slate-500">
                 <b className="text-slate-600">Remarks:</b> Need PO and Design / Fab / Delivery show all active NPI; Delivered shows past 2 weeks to next 2 weeks only.
               </div>
             </div>
           ) : (
-            <div className="space-y-2.5">
-              <form onSubmit={addQuickNote} className="flex gap-1.5">
+            <div className="flex flex-col gap-2.5 h-full min-h-0">
+              <form onSubmit={addQuickNote} className="flex gap-1.5 shrink-0">
                 <input
                   value={newNoteText}
                   onChange={(e) => setNewNoteText(e.target.value)}
@@ -294,7 +334,7 @@ export function OverviewPage() {
                 </Button>
               </form>
 
-              <ul className="divide-y divide-slate-100 max-h-56 overflow-y-auto pr-1">
+              <ul className="flex-1 min-h-0 divide-y divide-slate-100 overflow-y-auto pr-1">
                 {quickNotes.length === 0 ? (
                   <li className="py-8 text-center text-xs text-slate-400">No pinned notes yet. Add a quick reminder above.</li>
                 ) : (
@@ -332,6 +372,7 @@ export function OverviewPage() {
               </ul>
             </div>
           )}
+          </div>
         </Card>
 
         {/* RIGHT SLOT: Project Status (All Active Projects Excluding Completed) */}
@@ -340,13 +381,16 @@ export function OverviewPage() {
           action={<span className="text-xs text-slate-400">Active projects (excl. Completed) · Click status to update</span>}
           className="[&>div]:!p-3"
         >
-          {activeStatusProjects.length === 0 ? (
-            <EmptyState
-              title="No active in-progress projects"
-              hint="All projects are completed or archived."
-            />
-          ) : (
-            <div className="overflow-x-auto max-h-72 overflow-y-auto -mx-3">
+          <div className="h-[330px] flex flex-col">
+            {activeStatusProjects.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center">
+                <EmptyState
+                  title="No active in-progress projects"
+                  hint="All projects are completed or archived."
+                />
+              </div>
+            ) : (
+              <div className="flex-1 min-h-0 overflow-x-auto overflow-y-auto -mx-3">
               <table className="w-full text-xs">
                 <thead className="text-[11px] text-slate-500 text-left sticky top-0 bg-white border-b border-slate-100 z-10">
                   <tr className="whitespace-nowrap">
@@ -408,7 +452,8 @@ export function OverviewPage() {
                 </tbody>
               </table>
             </div>
-          )}
+            )}
+          </div>
         </Card>
       </div>
     </div>

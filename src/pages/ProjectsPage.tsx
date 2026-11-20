@@ -1,8 +1,9 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Archive, CheckSquare, ChevronDown, ChevronRight, FileSpreadsheet, GitBranch, GripVertical, Layers, ListChecks, Pencil, Plus, Star, Trash2 } from 'lucide-react'
+import { Archive, CheckSquare, ChevronDown, ChevronRight, CornerDownRight, FileSpreadsheet, GitBranch, GripVertical, Layers, ListChecks, Pencil, Plus, Star, Trash2 } from 'lucide-react'
 import { useTable } from '@/hooks/useTable'
 import { usePersistedState } from '@/hooks/usePersistedState'
+import { useSmoothDrag } from '@/hooks/useSmoothDrag'
 import {
   ACTIVE_PROJECT_STATUSES,
   HARDWARE_STATUSES,
@@ -26,7 +27,6 @@ import {
   type Workstream,
 } from '@/types'
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Input, Loading, Select } from '@/components/ui'
-import { TabSaveControls } from '@/components/TabSaveControls'
 import { ProjectForm } from '@/features/projects/ProjectForm'
 import { WorkstreamForm } from '@/features/projects/WorkstreamForm'
 import { TaskForm } from '@/features/tasks/TaskForm'
@@ -48,13 +48,14 @@ import { deleteTask, updateTask } from '@/services/taskService'
 import { deleteMilestone, updateMilestone } from '@/services/milestoneService'
 import { cn, formatDate, isPast, todayStr } from '@/utils/helpers'
 import { errorMessage } from '@/utils/validation'
+import { notify } from '@/services/toastService'
 
 const EXPANDED_DELIV_TASKS_KEY = 'npi.projects.expandedDeliverableTasks'
 const EXPANDED_PROJ_TASKS_KEY = 'npi.projects.expandedProjectTasks'
 const PROJECT_ORDER_KEY = 'npi.projects.buttonOrder'
 const SELECTED_PROJECT_KEY = 'npi.projects.selectedId'
 
-const PROJECT_BUTTON_STYLE: Record<ProjectStatus, { pill: string; dot: string }> = {
+export const PROJECT_BUTTON_STYLE: Record<ProjectStatus, { pill: string; dot: string }> = {
   Planning: {
     pill: 'border-violet-400 bg-violet-50 text-violet-900 hover:bg-violet-100',
     dot: 'bg-violet-500',
@@ -104,11 +105,7 @@ export function ProjectsPage() {
   // Persist user's left-to-right project button order & selected project across reloads
   const [projectOrder, setProjectOrder] = usePersistedState<string[]>(PROJECT_ORDER_KEY, [])
   const [selectedProjectId, setSelectedProjectId] = usePersistedState<string>(SELECTED_PROJECT_KEY, '')
-  const [draggingProjId, setDraggingProjId] = useState<string>('')
-  const [dragOverProjId, setDragOverProjId] = useState<string>('')
-  const projBtnRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
-  const prevProjRects = useRef<Map<string, DOMRect>>(new Map())
-  const lastSwapRef = useRef<{ targetId: string; time: number }>({ targetId: '', time: 0 })
+  const projStripRef = useRef<HTMLDivElement>(null)
 
   // Persist expand/collapse memory across tab switches & reloads
   const [expandedDelivTasks, setExpandedDelivTasks] = usePersistedState<Record<string, boolean>>(EXPANDED_DELIV_TASKS_KEY, {})
@@ -136,7 +133,7 @@ export function ProjectsPage() {
   const [msEditing, setMsEditing] = useState<Milestone | undefined>()
   const [msDeleting, setMsDeleting] = useState<Milestone | undefined>()
 
-  const [error, setError] = useState('')
+  const setError = (m: string) => { if (m) notify(m, 'err') }
 
   // "Quick Add → New Project" arrives here with ?new=1; "?project=ID" selects that project button
   useEffect(() => {
@@ -193,56 +190,28 @@ export function ProjectsPage() {
     return rows.find((p) => p.id === selectedProjectId) ?? rows[0]
   }, [rows, selectedProjectId])
 
-  function captureProjRects() {
-    const rects = new Map<string, DOMRect>()
-    projBtnRefs.current.forEach((el, id) => {
-      rects.set(id, el.getBoundingClientRect())
-    })
-    prevProjRects.current = rects
-  }
-
-  // Smooth Apple-style FLIP animation when project buttons shift left/right to make space
-  useLayoutEffect(() => {
-    if (prevProjRects.current.size === 0) return
-    const prev = prevProjRects.current
-    prevProjRects.current = new Map()
-    projBtnRefs.current.forEach((el, id) => {
-      if (id === draggingProjId) return
-      const oldRect = prev.get(id)
-      if (!oldRect) return
-      const newRect = el.getBoundingClientRect()
-      const dx = oldRect.left - newRect.left
-      const dy = oldRect.top - newRect.top
-      if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
-        el.getAnimations().forEach((a) => a.cancel())
-        el.animate(
-          [
-            { transform: `translate(${dx}px, ${dy}px)` },
-            { transform: 'translate(0, 0)' },
-          ],
-          {
-            duration: 400,
-            easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-          },
-        )
-      }
-    })
-  }, [rows, draggingProjId])
-
-  function moveProjectButton(fromId: string, toId: string) {
-    if (!fromId || !toId || fromId === toId) return
-    const currentIds = rows.map((p) => p.id)
-    const fromIdx = currentIds.indexOf(fromId)
-    const toIdx = currentIds.indexOf(toId)
-    if (fromIdx < 0 || toIdx < 0) return
-    captureProjRects()
-    const next = [...currentIds]
-    const [moved] = next.splice(fromIdx, 1)
-    next.splice(toIdx, 0, moved)
-    // Preserve any hidden project IDs that were filtered out
-    const remaining = projectOrder.filter((id) => !next.includes(id))
-    setProjectOrder([...next, ...remaining])
-  }
+  const {
+    draggingId: draggingProjId,
+    setItemRef: setProjBtnRef,
+    onPointerDown: handleProjPointerDown,
+    onPointerMove: handleProjPointerMove,
+    onPointerEnd: handleProjPointerEnd,
+  } = useSmoothDrag<HTMLButtonElement>({
+    ids: rows.map((p) => p.id),
+    axis: 'horizontal',
+    activationDistance: 6,
+    scrollContainerRef: projStripRef,
+    onClickItem: (id) => setSelectedProjectId(id),
+    onReorder: (fromIdx, toIdx) => {
+      const currentIds = rows.map((p) => p.id)
+      const next = [...currentIds]
+      const [moved] = next.splice(fromIdx, 1)
+      if (!moved) return
+      next.splice(toIdx, 0, moved)
+      const remaining = projectOrder.filter((id) => !next.includes(id))
+      setProjectOrder([...next, ...remaining])
+    },
+  })
 
   async function confirmDelete() {
     if (!deleting) return
@@ -267,15 +236,6 @@ export function ProjectsPage() {
 
   if (!projects || !workstreams || !suppliers || !quotations || !pets || !pos) return <Loading />
 
-  const projectsFingerprint = JSON.stringify({
-    projects: projects.filter((p) => !p.isNonNpi && !isArchivedProject(p)),
-    workstreams,
-    tasks: tasks ?? [],
-    quotations,
-    pets,
-    pos,
-  })
-
   return (
     <div className="space-y-4">
       {/* Filters & Action Bar */}
@@ -297,17 +257,8 @@ export function ProjectsPage() {
           <Button onClick={() => { setEditing(undefined); setFormOpen(true) }}>
             <Plus className="h-4 w-4" /> Create Project
           </Button>
-          <TabSaveControls
-            tabKey="projects"
-            tabLabel="Projects"
-            buttonLabel="Save Projects"
-            fingerprint={projectsFingerprint}
-            currentPathPrefix="/projects"
-          />
         </div>
       </div>
-
-      {error && <p className="text-sm text-red-600">{error}</p>}
 
       {rows.length === 0 ? (
         <Card className="!p-0">
@@ -318,16 +269,19 @@ export function ProjectsPage() {
         </Card>
       ) : (
         <>
-          {/* Horizontal Project Capsule Buttons (Fixed Width, Status-Coloured, Drag Left/Right to Rearrange) */}
+          {/* Horizontal Project Capsule Buttons (Single Row, Expands Right & Slides Horizontally, Fluid Drag) */}
           <Card
             title={`Available Projects (${rows.length})`}
             action={
               <span className="text-[11px] text-slate-400">
-                Click a project button to view · Drag buttons left or right to arrange order · Button colour = Project Status
+                Click to select · Hold & drag left/right to arrange · Scroll or slide horizontally
               </span>
             }
           >
-            <div className="flex flex-wrap items-center gap-2">
+            <div
+              ref={projStripRef}
+              className="flex flex-nowrap items-center gap-2 overflow-x-auto pb-1.5 pt-0.5 px-0.5"
+            >
               {rows.map((p) => {
                 const isSelected = activeProject?.id === p.id
                 const style = PROJECT_BUTTON_STYLE[p.status] ?? PROJECT_BUTTON_STYLE.Planning
@@ -335,49 +289,19 @@ export function ProjectsPage() {
                 return (
                   <button
                     key={p.id}
-                    ref={(el) => {
-                      if (el) projBtnRefs.current.set(p.id, el)
-                      else projBtnRefs.current.delete(p.id)
-                    }}
+                    ref={setProjBtnRef(p.id)}
                     type="button"
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.effectAllowed = 'move'
-                      e.dataTransfer.setData('text/plain', p.id)
-                      setDraggingProjId(p.id)
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault()
-                      e.dataTransfer.dropEffect = 'move'
-                      if (dragOverProjId !== p.id) setDragOverProjId(p.id)
-                      if (draggingProjId && draggingProjId !== p.id) {
-                        const now = performance.now()
-                        if (lastSwapRef.current.targetId !== p.id || now - lastSwapRef.current.time > 250) {
-                          lastSwapRef.current = { targetId: p.id, time: now }
-                          moveProjectButton(draggingProjId, p.id)
-                        }
-                      }
-                    }}
-                    onDragLeave={() => setDragOverProjId((cur) => (cur === p.id ? '' : cur))}
-                    onDrop={(e) => {
-                      e.preventDefault()
-                      const fromId = e.dataTransfer.getData('text/plain') || draggingProjId
-                      if (fromId && fromId !== p.id) moveProjectButton(fromId, p.id)
-                      setDraggingProjId('')
-                      setDragOverProjId('')
-                    }}
-                    onDragEnd={() => {
-                      setDraggingProjId('')
-                      setDragOverProjId('')
-                    }}
-                    onClick={() => setSelectedProjectId(p.id)}
+                    onPointerDown={(e) => handleProjPointerDown(e, p.id)}
+                    onPointerMove={handleProjPointerMove}
+                    onPointerUp={(e) => handleProjPointerEnd(e, p.id)}
+                    onPointerCancel={(e) => handleProjPointerEnd(e, p.id)}
+                    style={{ touchAction: 'none' }}
                     title={`HRS ${label}\nStatus: ${p.status} · HW Type: ${p.hwType || 'FT'}${p.baselineDate ? ` · HW Required: ${formatDate(p.baselineDate)}` : ''}\nClick to select · Drag left/right to rearrange`}
                     className={cn(
-                      'group relative inline-flex h-9 w-52 shrink-0 items-center justify-between gap-1.5 rounded-full border px-3 text-xs font-semibold transition-all duration-200 select-none cursor-pointer',
+                      'group relative inline-flex h-9 w-52 shrink-0 items-center justify-between gap-1.5 rounded-full border px-3 text-xs font-semibold select-none cursor-pointer',
                       style.pill,
-                      isSelected && 'ring-2 ring-primary ring-offset-1 shadow-md scale-[1.01]',
-                      draggingProjId === p.id && 'opacity-65 scale-[1.03] shadow-lg ring-2 ring-primary z-10',
-                      dragOverProjId === p.id && draggingProjId !== p.id && 'ring-2 ring-primary',
+                      isSelected && 'ring-2 ring-primary ring-offset-1 shadow-md',
+                      draggingProjId === p.id && 'shadow-xl ring-2 ring-primary cursor-grabbing',
                     )}
                   >
                     <GripVertical className="h-3.5 w-3.5 shrink-0 opacity-40 group-hover:opacity-80 cursor-grab active:cursor-grabbing" />
@@ -389,72 +313,51 @@ export function ProjectsPage() {
             </div>
           </Card>
 
-          {/* Active Selected Project Workspace */}
+          {/* Active Selected Project Workspace (Clean Card Hierarchy — No Cramped Table) */}
           {activeProject && (
-            <Card className="!p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="text-xs text-slate-600 text-left bg-slate-100">
-                    <tr>
-                      <th className="px-3 py-2.5 font-semibold whitespace-nowrap">HRS Number / Deliverable / Tasks</th>
-                      <th className="px-3 py-2.5 font-semibold whitespace-nowrap">HW Type / MPN</th>
-                      <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Device / Supplier</th>
-                      <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Status / HW Status</th>
-                      <th className="px-3 py-2.5 font-semibold whitespace-nowrap">HW Required / Delivery</th>
-                      <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Quote · PET · PO</th>
-                      <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <ProjectWithDeliverablesGroup
-                      key={activeProject.id}
-                      project={activeProject}
-                      deliverables={workstreams.filter((w) => w.projectId === activeProject.id)}
-                      tasks={(tasks ?? []).filter((t) => t.projectId === activeProject.id)}
-                      milestones={(milestones ?? []).filter((m) => m.projectId === activeProject.id)}
-                      commByDeliverable={commByDeliverable}
-                      collapsed={false}
-                      onToggleCollapse={() => {}}
-                      projTasksExpanded={!!expandedProjTasks[activeProject.id]}
-                      onToggleProjTasks={() =>
-                        setExpandedProjTasks((prev) => ({ ...prev, [activeProject.id]: !prev[activeProject.id] }))
-                      }
-                      expandedDelivTasks={expandedDelivTasks}
-                      onToggleDeliverableTasks={(wId) =>
-                        setExpandedDelivTasks((prev) => ({ ...prev, [wId]: !prev[wId] }))
-                      }
-                      onNavigate={() => navigate(`/projects/${activeProject.id}`)}
-                      onEditProject={() => { setEditing(activeProject); setFormOpen(true) }}
-                      onDeleteProject={() => setDeleting(activeProject)}
-                      onExportExcel={() => void exportSingleProjectReport(activeProject.id)}
-                      onRequestArchive={() => setArchivingProject(activeProject)}
-                      onAddDeliverable={() => { setWsProjectId(activeProject.id); setWsEditing(undefined); setWsOpen(true) }}
-                      onEditDeliverable={(w) => { setWsProjectId(activeProject.id); setWsEditing(w); setWsOpen(true) }}
-                      onDeleteDeliverable={(w) => setWsDeleting(w)}
-                      onAddTask={(w) => {
-                        setTaskEditing(undefined)
-                        setTaskProjectId(activeProject.id)
-                        setTaskWorkstreamId(w?.id ?? '')
-                        setTaskOpen(true)
-                      }}
-                      onEditTask={(t) => {
-                        setTaskEditing(t)
-                        setTaskProjectId(t.projectId)
-                        setTaskWorkstreamId(t.workstreamId)
-                        setTaskOpen(true)
-                      }}
-                      onDeleteTask={(t) => setTaskDeleting(t)}
-                      onEditMilestone={(m) => {
-                        setMsEditing(m)
-                        setMsOpen(true)
-                      }}
-                      onDeleteMilestone={(m) => setMsDeleting(m)}
-                      onError={(msg) => setError(msg)}
-                    />
-                  </tbody>
-                </table>
-              </div>
-            </Card>
+            <ProjectWithDeliverablesGroup
+              key={activeProject.id}
+              project={activeProject}
+              deliverables={workstreams.filter((w) => w.projectId === activeProject.id)}
+              tasks={(tasks ?? []).filter((t) => t.projectId === activeProject.id)}
+              milestones={(milestones ?? []).filter((m) => m.projectId === activeProject.id)}
+              commByDeliverable={commByDeliverable}
+              projTasksExpanded={!!expandedProjTasks[activeProject.id]}
+              onToggleProjTasks={() =>
+                setExpandedProjTasks((prev) => ({ ...prev, [activeProject.id]: !prev[activeProject.id] }))
+              }
+              expandedDelivTasks={expandedDelivTasks}
+              onToggleDeliverableTasks={(wId) =>
+                setExpandedDelivTasks((prev) => ({ ...prev, [wId]: !prev[wId] }))
+              }
+              onNavigate={() => navigate(`/projects/${activeProject.id}`)}
+              onEditProject={() => { setEditing(activeProject); setFormOpen(true) }}
+              onDeleteProject={() => setDeleting(activeProject)}
+              onExportExcel={() => void exportSingleProjectReport(activeProject.id)}
+              onRequestArchive={() => setArchivingProject(activeProject)}
+              onAddDeliverable={() => { setWsProjectId(activeProject.id); setWsEditing(undefined); setWsOpen(true) }}
+              onEditDeliverable={(w) => { setWsProjectId(activeProject.id); setWsEditing(w); setWsOpen(true) }}
+              onDeleteDeliverable={(w) => setWsDeleting(w)}
+              onAddTask={(w) => {
+                setTaskEditing(undefined)
+                setTaskProjectId(activeProject.id)
+                setTaskWorkstreamId(w?.id ?? '')
+                setTaskOpen(true)
+              }}
+              onEditTask={(t) => {
+                setTaskEditing(t)
+                setTaskProjectId(t.projectId)
+                setTaskWorkstreamId(t.workstreamId)
+                setTaskOpen(true)
+              }}
+              onDeleteTask={(t) => setTaskDeleting(t)}
+              onEditMilestone={(m) => {
+                setMsEditing(m)
+                setMsOpen(true)
+              }}
+              onDeleteMilestone={(m) => setMsDeleting(m)}
+              onError={(msg) => setError(msg)}
+            />
           )}
         </>
       )}
@@ -624,7 +527,7 @@ export function InlineCommercialCell({
       {!hwOnly && (<>
       {/* Quote # inline edit */}
       {editingField === 'quote' ? (
-        <span className="inline-flex items-center gap-1 rounded border border-blue-400 bg-white px-1.5 py-0.5 text-[11px]">
+        <span className="inline-flex items-center gap-1 rounded-full border border-blue-400 bg-white px-2.5 py-0.5 text-[11px] whitespace-nowrap">
           <b className="text-blue-900">Quote:</b>
           <input
             autoFocus
@@ -636,7 +539,7 @@ export function InlineCommercialCell({
               if (e.key === 'Escape') setEditingField(null)
             }}
             placeholder="Q-..."
-            className="w-24 text-[11px] focus:outline-none"
+            className="w-24 text-[11px] bg-transparent focus:outline-none"
           />
         </span>
       ) : (
@@ -644,7 +547,7 @@ export function InlineCommercialCell({
           type="button"
           onClick={() => { setDraft(q?.number ?? ''); setEditingField('quote') }}
           title="Click to edit Quotation Number directly"
-          className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] transition-colors ${
+          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] whitespace-nowrap transition-colors ${
             q?.number
               ? 'border-blue-200 bg-blue-50 text-blue-900 hover:border-blue-400'
               : 'border-dashed border-slate-300 text-slate-400 hover:border-blue-400 hover:text-blue-700 hover:bg-blue-50/40'
@@ -656,7 +559,7 @@ export function InlineCommercialCell({
 
       {/* PET # inline edit */}
       {editingField === 'pet' ? (
-        <span className="inline-flex items-center gap-1 rounded border border-indigo-400 bg-white px-1.5 py-0.5 text-[11px]">
+        <span className="inline-flex items-center gap-1 rounded-full border border-indigo-400 bg-white px-2.5 py-0.5 text-[11px] whitespace-nowrap">
           <b className="text-indigo-900">PET:</b>
           <input
             autoFocus
@@ -668,7 +571,7 @@ export function InlineCommercialCell({
               if (e.key === 'Escape') setEditingField(null)
             }}
             placeholder="PET-..."
-            className="w-24 text-[11px] focus:outline-none"
+            className="w-24 text-[11px] bg-transparent focus:outline-none"
           />
         </span>
       ) : (
@@ -676,7 +579,7 @@ export function InlineCommercialCell({
           type="button"
           onClick={() => { setDraft(pet?.reference ?? ''); setEditingField('pet') }}
           title="Click to edit PET Number directly"
-          className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] transition-colors ${
+          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] whitespace-nowrap transition-colors ${
             pet?.reference
               ? 'border-indigo-200 bg-indigo-50 text-indigo-900 hover:border-indigo-400'
               : 'border-dashed border-slate-300 text-slate-400 hover:border-indigo-400 hover:text-indigo-700 hover:bg-indigo-50/40'
@@ -688,7 +591,7 @@ export function InlineCommercialCell({
 
       {/* PO # inline edit */}
       {editingField === 'po' ? (
-        <span className="inline-flex items-center gap-1 rounded border border-emerald-400 bg-white px-1.5 py-0.5 text-[11px]">
+        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400 bg-white px-2.5 py-0.5 text-[11px] whitespace-nowrap">
           <b className="text-emerald-900">PO:</b>
           <input
             autoFocus
@@ -700,7 +603,7 @@ export function InlineCommercialCell({
               if (e.key === 'Escape') setEditingField(null)
             }}
             placeholder="PO-..."
-            className="w-24 text-[11px] focus:outline-none"
+            className="w-24 text-[11px] bg-transparent focus:outline-none"
           />
         </span>
       ) : (
@@ -708,7 +611,7 @@ export function InlineCommercialCell({
           type="button"
           onClick={() => { setDraft(po?.number ?? ''); setEditingField('po') }}
           title="Click to edit PO Number directly"
-          className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] transition-colors ${
+          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] whitespace-nowrap transition-colors ${
             po?.number
               ? 'border-emerald-200 bg-emerald-50 text-emerald-900 hover:border-emerald-400'
               : 'border-dashed border-slate-300 text-slate-400 hover:border-emerald-400 hover:text-emerald-700 hover:bg-emerald-50/40'
@@ -749,8 +652,6 @@ function ProjectWithDeliverablesGroup({
   tasks,
   milestones,
   commByDeliverable,
-  collapsed,
-  onToggleCollapse,
   projTasksExpanded,
   onToggleProjTasks,
   expandedDelivTasks,
@@ -775,8 +676,6 @@ function ProjectWithDeliverablesGroup({
   tasks: Task[]
   milestones: Milestone[]
   commByDeliverable: Map<string, DeliverableCommercialRow>
-  collapsed: boolean
-  onToggleCollapse: () => void
   projTasksExpanded: boolean
   onToggleProjTasks: () => void
   expandedDelivTasks: Record<string, boolean>
@@ -821,125 +720,116 @@ function ProjectWithDeliverablesGroup({
   }
 
   return (
-    <>
-      {/* Main Project Row */}
-      <tr onClick={onNavigate} className="border-t border-slate-200 bg-white hover:bg-slate-50 cursor-pointer font-medium">
-        <td className="px-3 py-2.5 whitespace-nowrap">
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onToggleCollapse() }}
-              className="p-0.5 rounded hover:bg-slate-200 text-slate-600"
-              title={collapsed ? 'Expand deliverables & tasks' : 'Collapse deliverables & tasks'}
-            >
-              {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </button>
-            <span className="font-bold text-primary">{p.code}</span>
-            <span className="text-[11px] font-normal text-slate-400">
-              ({deliverables.length} Deliv · {totalProjectItems} Tasks)
+    <div className="space-y-3">
+      {/* 1. Project Header Card */}
+      <div className="rounded-2xl liquid-glass overflow-hidden">
+        <div
+          onClick={onNavigate}
+          className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 liquid-card-header cursor-pointer hover:bg-slate-100/70 transition-colors"
+        >
+          <div className="flex flex-wrap items-center gap-2.5 min-w-0">
+            <span className="text-base font-bold text-primary">{p.code}</span>
+            <Badge color="blue">{p.hwType || 'FT'}</Badge>
+            <span className="text-sm font-semibold text-slate-900 truncate">
+              {p.deviceName || '—'}
+            </span>
+            <InlineStatusSelect
+              value={p.status}
+              options={PROJECT_STATUSES}
+              onChange={async (next) => {
+                const nextStatus = next as ProjectStatus
+                try { await updateProject(p.id, { ...p, status: nextStatus }) } catch (e) { onError(errorMessage(e)) }
+              }}
+            />
+            {p.baselineDate && (
+              <span className="inline-flex items-center gap-1 rounded-full liquid-glass-pill px-2.5 py-0.5 text-[11px] font-medium text-slate-600">
+                HW Required: <b className="text-slate-800">{formatDate(p.baselineDate)}</b>
+              </span>
+            )}
+            <span className="text-xs text-slate-400">
+              {deliverables.length} Deliverables · {totalProjectItems} Tasks
             </span>
           </div>
-        </td>
-        <td className="px-3"><Badge color="blue">{p.hwType || 'FT'}</Badge></td>
-        <td className="px-3 font-semibold text-slate-900">{p.deviceName || '—'}</td>
-        <td className="px-3">
-          <InlineStatusSelect
-            value={p.status}
-            options={PROJECT_STATUSES}
-            onChange={async (next) => {
-              const nextStatus = next as ProjectStatus
-              try { await updateProject(p.id, { ...p, status: nextStatus }) } catch (e) { onError(errorMessage(e)) }
-            }}
-          />
-        </td>
-        <td className="px-3 whitespace-nowrap text-xs">{formatDate(p.baselineDate)}</td>
-        <td className="px-3 text-xs text-slate-500" onClick={(e) => e.stopPropagation()}>
-          <div className="flex flex-wrap items-center gap-1">
-            <Button size="sm" variant="ghost" className="!py-1 !px-2 text-xs text-primary" onClick={onAddDeliverable}>
-              <Plus className="h-3 w-3" /> Add Deliverable
+
+          <div className="flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+            <Button size="sm" onClick={onAddDeliverable}>
+              <Plus className="h-3.5 w-3.5 text-primary" /> Add Deliverable
             </Button>
-            <Button size="sm" variant="ghost" className="!py-1 !px-2 text-xs text-primary" onClick={() => onAddTask()}>
-              <Plus className="h-3 w-3" /> Add Task
+            <Button size="sm" onClick={() => onAddTask()}>
+              <Plus className="h-3.5 w-3.5 text-primary" /> Add Task
             </Button>
-          </div>
-        </td>
-        <td className="px-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center gap-1">
             <Button
               variant={projTasksExpanded ? 'primary' : 'secondary'}
               size="sm"
-              className="!h-7 !px-2.5 text-[11px]"
-              title="Show or hide project-level tasks & milestones directly under this project"
+              title="Show or hide general project-level tasks & milestones"
               onClick={onToggleProjTasks}
             >
               <ListChecks className="h-3.5 w-3.5" />
               Project Tasks ({generalProjectItemsCount})
               {projTasksExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
             </Button>
-            <Button size="sm" className="!h-7 !px-2.5 text-[11px]" onClick={onExportExcel} title="Export this project to Excel">
+            <Button size="sm" onClick={onExportExcel} title="Export this project to Excel">
               <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" /> Export to Excel
             </Button>
-            <Button size="sm" className="!h-7 !px-2.5 text-[11px]" onClick={onRequestArchive} title="Archive this project permanently">
+            <Button size="sm" onClick={onRequestArchive} title="Archive this project permanently">
               <Archive className="h-3.5 w-3.5 text-amber-600" /> Archive
             </Button>
-            <Button variant="ghost" size="sm" aria-label="Edit project" onClick={onEditProject}><Pencil className="h-3.5 w-3.5" /></Button>
-            <Button variant="ghost" size="sm" aria-label="Delete project" onClick={onDeleteProject}><Trash2 className="h-3.5 w-3.5 text-red-500" /></Button>
+            <Button variant="ghost" size="sm" aria-label="Edit project" onClick={onEditProject}>
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="sm" aria-label="Delete project" onClick={onDeleteProject}>
+              <Trash2 className="h-3.5 w-3.5 text-red-500" />
+            </Button>
           </div>
-        </td>
-      </tr>
+        </div>
 
-      {/* Inline Project-Level Tasks & Milestones (not tied to a specific deliverable) */}
-      {!collapsed && projTasksExpanded && (
-        <>
-          {generalProjectItemsCount === 0 ? (
-            <tr className="border-t border-slate-100 bg-slate-50/40 text-xs">
-              <td colSpan={7} className="pl-11 pr-3 py-2 text-slate-500">
-                <div className="flex items-center justify-between">
-                  <span>No general project-level tasks or milestones (deliverable tasks are shown under each deliverable below).</span>
-                  <Button size="sm" variant="secondary" className="!h-6 !px-2.5 text-[11px]" onClick={() => onAddTask()}>
-                    <Plus className="h-3 w-3" /> Add Project Task / Milestone
-                  </Button>
-                </div>
-              </td>
-            </tr>
-          ) : (
-            <>
-              {projectOnlyMilestones.map((m) => (
-                <tr key={`ms-${m.id}`} className="border-t border-slate-100 bg-purple-50/30 hover:bg-purple-50/60 text-xs">
-                  <td className="pl-11 pr-2 py-1.5 whitespace-nowrap">
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className="font-mono text-slate-400 text-xs leading-none">├─</span>
+        {/* Project-Level Tasks & Milestones (when expanded) */}
+        {projTasksExpanded && (
+          <div className="px-4 py-3 border-t border-slate-200 bg-slate-50/40 space-y-1.5">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                Project-Level Tasks & Milestones
+              </span>
+              <Button size="sm" variant="secondary" className="!h-6 !px-2.5 text-[11px]" onClick={() => onAddTask()}>
+                <Plus className="h-3 w-3" /> Add Project Task / Milestone
+              </Button>
+            </div>
+            {generalProjectItemsCount === 0 ? (
+              <p className="text-xs text-slate-400 py-1">
+                No general project-level tasks or milestones (deliverable tasks are shown inside each deliverable card below).
+              </p>
+            ) : (
+              <div className="space-y-1.5 pl-3 border-l-2 border-primary/30">
+                {projectOnlyMilestones.map((m) => (
+                  <div
+                    key={`ms-${m.id}`}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-purple-200 bg-purple-50/30 hover:bg-purple-50/60 px-3 py-2 text-xs transition-colors"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <CornerDownRight className="h-3.5 w-3.5 text-purple-500 shrink-0" />
                       <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-400 shrink-0" />
                       <button
                         type="button"
                         onClick={() => onEditMilestone(m)}
-                        className="font-semibold text-slate-800 hover:text-primary hover:underline text-left"
+                        className="font-semibold text-slate-800 hover:text-primary hover:underline truncate text-left"
                       >
                         {m.name}
                       </button>
-                    </span>
-                  </td>
-                  <td className="px-3 py-1.5">
-                    <span className="inline-flex items-center gap-1 rounded-full border border-purple-500 bg-purple-100/95 px-2 py-0.5 text-[10px] font-semibold text-purple-950">
-                      Milestone · 1d
-                    </span>
-                  </td>
-                  <td className="px-3 py-1.5 text-slate-500 truncate max-w-[180px]">{m.description || m.remarks || 'Project Milestone'}</td>
-                  <td className="px-3 py-1.5">
-                    <InlineStatusSelect
-                      value={m.status}
-                      options={MILESTONE_STATUSES}
-                      onChange={async (next) => {
-                        try { await updateMilestone(m.id, { ...m, status: next as MilestoneStatus }) } catch (e) { onError(errorMessage(e)) }
-                      }}
-                    />
-                  </td>
-                  <td className="px-3 py-1.5 whitespace-nowrap text-slate-600">
-                    Target: <span className="font-semibold text-slate-800">{formatDate(m.targetDate)}</span>
-                  </td>
-                  <td className="px-3 py-1.5 text-slate-400 text-[11px]">Project Milestone</td>
-                  <td className="px-3 py-1.5 whitespace-nowrap">
-                    <div className="flex items-center gap-1">
+                      <span className="inline-flex items-center rounded-full border border-purple-500 bg-purple-100/95 px-2 py-0.5 text-[10px] font-semibold text-purple-950">
+                        Milestone · 1d
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2.5 shrink-0">
+                      <span className="text-slate-600">
+                        Target: <b className="text-slate-800">{formatDate(m.targetDate)}</b>
+                      </span>
+                      <InlineStatusSelect
+                        value={m.status}
+                        options={MILESTONE_STATUSES}
+                        onChange={async (next) => {
+                          try { await updateMilestone(m.id, { ...m, status: next as MilestoneStatus }) } catch (e) { onError(errorMessage(e)) }
+                        }}
+                      />
                       <Button variant="ghost" size="sm" title="Edit milestone" onClick={() => onEditMilestone(m)}>
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
@@ -947,40 +837,38 @@ function ProjectWithDeliverablesGroup({
                         <Trash2 className="h-3.5 w-3.5 text-red-500" />
                       </Button>
                     </div>
-                  </td>
-                </tr>
-              ))}
-              {projectOnlyTasks.map((t, tIdx) => {
-                const isLastTask = tIdx === projectOnlyTasks.length - 1 && deliverables.length === 0
-                return (
-                  <tr key={t.id} className="border-t border-slate-100 bg-slate-50/45 hover:bg-blue-50/40 text-xs">
-                    <td className="pl-11 pr-2 py-1.5 whitespace-nowrap">
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className="font-mono text-slate-400 text-xs leading-none">{isLastTask ? '└─' : '├─'}</span>
-                        <CheckSquare className="h-3.5 w-3.5 text-primary shrink-0" />
-                        <button
-                          type="button"
-                          onClick={() => onEditTask(t)}
-                          className="font-semibold text-slate-800 hover:text-primary hover:underline text-left"
-                        >
-                          {t.name}
-                        </button>
+                  </div>
+                ))}
+
+                {projectOnlyTasks.map((t) => (
+                  <div
+                    key={t.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white/90 hover:bg-blue-50/40 px-3 py-2 text-xs transition-colors"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <CornerDownRight className="h-3.5 w-3.5 text-primary/70 shrink-0" />
+                      <CheckSquare className="h-3.5 w-3.5 text-primary shrink-0" />
+                      <button
+                        type="button"
+                        onClick={() => onEditTask(t)}
+                        className="font-semibold text-slate-800 hover:text-primary hover:underline truncate text-left"
+                      >
+                        {t.name}
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                      <InlineStatusSelect
+                        value={t.priority}
+                        options={PRIORITIES}
+                        onChange={async (next) => {
+                          try { await updateTask(t.id, { ...t, priority: next as Priority }) } catch (e) { onError(errorMessage(e)) }
+                        }}
+                      />
+                      <span className="text-[11px] font-medium text-slate-400">{t.workingDays ?? 1}d</span>
+                      <span className={isOverdueTask(t) ? 'text-red-600 font-semibold' : 'text-slate-600'}>
+                        {formatDate(t.startDate)} → <b className="text-slate-800">{formatDate(t.dueDate)}</b>
                       </span>
-                    </td>
-                    <td className="px-3 py-1.5 whitespace-nowrap">
-                      <div className="inline-flex items-center gap-1.5">
-                        <InlineStatusSelect
-                          value={t.priority}
-                          options={PRIORITIES}
-                          onChange={async (next) => {
-                            try { await updateTask(t.id, { ...t, priority: next as Priority }) } catch (e) { onError(errorMessage(e)) }
-                          }}
-                        />
-                        <span className="text-[11px] text-slate-400 font-medium">{t.workingDays ?? 1}d</span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-1.5 text-slate-500 truncate max-w-[180px]">{t.remarks || 'Project Task'}</td>
-                    <td className="px-3 py-1.5">
+                      <DeadlineBadge task={t} />
                       <InlineStatusSelect
                         value={t.status}
                         options={TASK_STATUSES}
@@ -988,206 +876,206 @@ function ProjectWithDeliverablesGroup({
                           try { await updateTask(t.id, { ...t, status: next as TaskStatus }) } catch (e) { onError(errorMessage(e)) }
                         }}
                       />
-                    </td>
-                    <td className="px-3 py-1.5 whitespace-nowrap">
-                      <span className={isOverdueTask(t) ? 'text-red-600 font-semibold' : 'text-slate-600'}>
-                        {formatDate(t.startDate)} → <span className="font-semibold text-slate-800">{formatDate(t.dueDate)}</span>
-                      </span>
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <DeadlineBadge task={t} />
-                    </td>
-                    <td className="px-3 py-1.5 whitespace-nowrap">
-                      <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="sm" title="Edit task" onClick={() => onEditTask(t)}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="sm" title="Delete task" onClick={() => onDeleteTask(t)}>
-                          <Trash2 className="h-3.5 w-3.5 text-red-500" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </>
-          )}
-        </>
-      )}
-
-      {/* Deliverable & Commercial Sub-Items Displayed as Branches Under Main Project */}
-      {!collapsed && deliverables.map((w, idx) => {
-        const isLast = idx === deliverables.length - 1
-        const comm = commByDeliverable.get(w.id)
-        const po = comm?.po
-        const hwStatus = normalizeHardwareStatus(po)
-        const late = po && !po.actualDelivery && isPast(po.expectedDelivery) && hwStatus !== 'Delivered'
-        const wTasks = tasks
-          .filter((t) => t.workstreamId === w.id)
-          .sort((a, b) => (a.startDate || a.dueDate || '9999').localeCompare(b.startDate || b.dueDate || '9999') || a.createdAt.localeCompare(b.createdAt))
-        const wMilestones = milestones
-          .filter((m) => m.workstreamId === w.id)
-          .sort((a, b) => (a.targetDate || '9999').localeCompare(b.targetDate || '9999'))
-        const wTotalItems = wTasks.length + wMilestones.length
-        const isDelivTasksExpanded = !!expandedDelivTasks[w.id]
-
-        return (
-          <Fragment key={w.id}>
-            <tr className="border-t border-slate-100 bg-slate-50/75 hover:bg-blue-50/40 text-xs">
-              <td className="pl-7 pr-2 py-2 whitespace-nowrap text-slate-700 select-none">
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="font-mono text-slate-400 font-bold text-sm leading-none">{isLast && !isDelivTasksExpanded ? '└─' : '├─'}</span>
-                  <button
-                    type="button"
-                    onClick={() => onToggleDeliverableTasks(w.id)}
-                    className="p-0.5 rounded hover:bg-slate-200 text-slate-500"
-                    title={isDelivTasksExpanded ? 'Hide deliverable tasks' : 'Show deliverable tasks inline'}
-                  >
-                    {isDelivTasksExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                  </button>
-                  <GitBranch className="h-3.5 w-3.5 text-primary/80 shrink-0" />
-                  <button onClick={() => onToggleDeliverableTasks(w.id)} className="font-semibold text-slate-800 hover:text-primary hover:underline">
-                    {deliverableDisplayName(w)}
-                  </button>
-                </span>
-              </td>
-              <td className="px-3 py-2 font-mono text-slate-600 whitespace-nowrap">{w.mpn || '—'}</td>
-              <td className="px-3 py-2 text-slate-600">{comm?.supplierName ?? '—'}</td>
-              <td className="px-3 py-2">
-                <InlineCommercialCell workstream={w} comm={comm} onError={onError} hwOnly />
-              </td>
-              <td className="px-3 py-2 whitespace-nowrap">
-                {po?.expectedDelivery || po?.actualDelivery ? (
-                  <div className={late ? 'text-red-600 font-semibold' : 'text-slate-600'}>
-                    Exp: {formatDate(po.expectedDelivery)}
-                    {po.actualDelivery && <span className="block text-[11px] text-emerald-700">Act: {formatDate(po.actualDelivery)}</span>}
+                      <Button variant="ghost" size="sm" title="Edit task" onClick={() => onEditTask(t)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="sm" title="Delete task" onClick={() => onDeleteTask(t)}>
+                        <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                      </Button>
+                    </div>
                   </div>
-                ) : (
-                  <span className="text-slate-400">—</span>
-                )}
-              </td>
-              <td className="px-3 py-2">
-                <InlineCommercialCell workstream={w} comm={comm} onError={onError} hideHw />
-              </td>
-              <td className="px-3 py-2 whitespace-nowrap">
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant={isDelivTasksExpanded ? 'primary' : 'secondary'}
-                    size="sm"
-                    className="!h-7 !px-2.5 text-[11px]"
-                    title="Show or hide tasks for this deliverable directly below"
-                    onClick={() => onToggleDeliverableTasks(w.id)}
-                  >
-                    <ListChecks className="h-3.5 w-3.5" />
-                    Tasks ({wTotalItems})
-                    {isDelivTasksExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="!h-7 !px-1.5 text-[11px] text-primary"
-                    title="Add task to this deliverable"
-                    onClick={() => onAddTask(w)}
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="sm" title="Edit Deliverable & Commercial" onClick={() => onEditDeliverable(w)}>
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="sm" title="Delete Deliverable" onClick={() => onDeleteDeliverable(w)}>
-                    <Trash2 className="h-3.5 w-3.5 text-red-500" />
-                  </Button>
-                </div>
-              </td>
-            </tr>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
-            {/* Inline Deliverable Tasks & Milestones nested directly under this Deliverable */}
-            {isDelivTasksExpanded && (
-              <>
-                {wTotalItems === 0 ? (
-                  <tr className="border-t border-slate-100 bg-white/70 text-xs">
-                    <td colSpan={7} className="pl-14 pr-3 py-2 text-slate-500">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span>No tasks for <b>{deliverableDisplayName(w)}</b> yet.</span>
+      {/* 2. Deliverables Cards + Clear Arrow-Connected Tasks */}
+      {deliverables.length === 0 ? (
+        <div className="rounded-2xl liquid-glass p-6 text-center text-xs text-slate-500">
+          No deliverables yet for <b>HRS {p.code}</b>. Click <b>+ Add Deliverable</b> above to add one.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {deliverables.map((w) => {
+            const comm = commByDeliverable.get(w.id)
+            const po = comm?.po
+            const hwStatus = normalizeHardwareStatus(po)
+            const late = po && !po.actualDelivery && isPast(po.expectedDelivery) && hwStatus !== 'Delivered'
+            const wTasks = tasks
+              .filter((t) => t.workstreamId === w.id)
+              .sort((a, b) => (a.startDate || a.dueDate || '9999').localeCompare(b.startDate || b.dueDate || '9999') || a.createdAt.localeCompare(b.createdAt))
+            const wMilestones = milestones
+              .filter((m) => m.workstreamId === w.id)
+              .sort((a, b) => (a.targetDate || '9999').localeCompare(b.targetDate || '9999'))
+            const wTotalItems = wTasks.length + wMilestones.length
+            const isDelivTasksExpanded = !!expandedDelivTasks[w.id]
+
+            return (
+              <div key={w.id} className="rounded-2xl liquid-glass overflow-hidden">
+                {/* Deliverable Header Row */}
+                <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-slate-50/60">
+                  <div className="flex flex-wrap items-center gap-2.5 min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => onToggleDeliverableTasks(w.id)}
+                      className="p-1 rounded-full hover:bg-slate-200/70 text-slate-500 transition-colors"
+                      title={isDelivTasksExpanded ? 'Hide deliverable tasks' : 'Show deliverable tasks'}
+                    >
+                      {isDelivTasksExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                    </button>
+                    <GitBranch className="h-4 w-4 text-primary shrink-0" />
+                    <button
+                      type="button"
+                      onClick={() => onToggleDeliverableTasks(w.id)}
+                      className="text-sm font-bold text-slate-800 hover:text-primary hover:underline"
+                    >
+                      {deliverableDisplayName(w)}
+                    </button>
+                    {w.mpn && (
+                      <span className="rounded-full liquid-glass-pill px-2.5 py-0.5 text-[11px] font-medium text-slate-600">
+                        MPN: {w.mpn}
+                      </span>
+                    )}
+                    <span className="text-xs text-slate-500">
+                      {comm?.supplierName ?? 'No supplier'}
+                    </span>
+                    <InlineCommercialCell workstream={w} comm={comm} onError={onError} hwOnly />
+                    {(po?.expectedDelivery || po?.actualDelivery) && (
+                      <span className={cn('text-xs whitespace-nowrap', late ? 'text-red-600 font-semibold' : 'text-slate-600')}>
+                        Exp: <b>{formatDate(po.expectedDelivery)}</b>
+                        {po.actualDelivery && <span className="ml-2 text-emerald-700">Act: <b>{formatDate(po.actualDelivery)}</b></span>}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <InlineCommercialCell workstream={w} comm={comm} onError={onError} hideHw />
+                    <Button
+                      variant={isDelivTasksExpanded ? 'primary' : 'secondary'}
+                      size="sm"
+                      title="Show or hide tasks linked to this deliverable"
+                      onClick={() => onToggleDeliverableTasks(w.id)}
+                    >
+                      <ListChecks className="h-3.5 w-3.5" />
+                      Tasks ({wTotalItems})
+                      {isDelivTasksExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-primary"
+                      title="Add task to this deliverable"
+                      onClick={() => onAddTask(w)}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="sm" title="Edit Deliverable & Commercial" onClick={() => onEditDeliverable(w)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="sm" title="Delete Deliverable" onClick={() => onDeleteDeliverable(w)}>
+                      <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Linked Tasks & Milestones with Clear Arrow Connector to Parent Deliverable */}
+                {isDelivTasksExpanded && (
+                  <div className="px-4 py-3 border-t border-slate-200 bg-white/40">
+                    {wTotalItems === 0 ? (
+                      <div className="flex flex-wrap items-center justify-between gap-2 pl-4 border-l-2 border-primary/35 py-1 text-xs text-slate-500">
+                        <span className="inline-flex items-center gap-1.5">
+                          <CornerDownRight className="h-3.5 w-3.5 text-primary" />
+                          No tasks linked to <b>{deliverableDisplayName(w)}</b> yet.
+                        </span>
                         <div className="flex items-center gap-1.5">
-                          <Button size="sm" variant="secondary" className="!h-6 !px-2.5 text-[11px]" onClick={() => void handleGenerateFromTemplate(w)}>
+                          <Button size="sm" variant="secondary" className="!h-7 !px-3 text-[11px]" onClick={() => void handleGenerateFromTemplate(w)}>
                             <Layers className="h-3 w-3" /> Load Template Tasks
                           </Button>
-                          <Button size="sm" variant="primary" className="!h-6 !px-2.5 text-[11px]" onClick={() => onAddTask(w)}>
+                          <Button size="sm" variant="primary" className="!h-7 !px-3 text-[11px]" onClick={() => onAddTask(w)}>
                             <Plus className="h-3 w-3" /> Add Task
                           </Button>
                         </div>
                       </div>
-                    </td>
-                  </tr>
-                ) : (
-                  <>
-                    {wMilestones.map((m) => (
-                      <tr key={`deliv-ms-${m.id}`} className="border-t border-slate-100 bg-purple-50/25 hover:bg-purple-50/50 text-xs">
-                        <td className="pl-14 pr-2 py-1.5 whitespace-nowrap">
-                          <span className="inline-flex items-center gap-1.5">
-                            <span className="font-mono text-slate-300 text-xs leading-none">├─</span>
-                            <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-400 shrink-0" />
-                            <button
-                              type="button"
-                              onClick={() => onEditMilestone(m)}
-                              className="font-semibold text-slate-800 hover:text-primary hover:underline text-left"
-                            >
-                              {m.name}
-                            </button>
-                          </span>
-                        </td>
-                        <td className="px-3 py-1.5">
-                          <span className="inline-flex items-center gap-1 rounded-full border border-purple-500 bg-purple-100/95 px-2 py-0.5 text-[10px] font-semibold text-purple-950">
-                            Milestone · 1d
-                          </span>
-                        </td>
-                        <td className="px-3 py-1.5 text-slate-500">{comm?.supplierName ?? '—'}</td>
-                        <td className="px-3 py-1.5">
-                          <InlineStatusSelect
-                            value={m.status}
-                            options={MILESTONE_STATUSES}
-                            onChange={async (next) => {
-                              try { await updateMilestone(m.id, { ...m, status: next as MilestoneStatus }) } catch (e) { onError(errorMessage(e)) }
-                            }}
-                          />
-                        </td>
-                        <td className="px-3 py-1.5 whitespace-nowrap text-slate-600">
-                          Target: <span className="font-semibold text-slate-800">{formatDate(m.targetDate)}</span>
-                        </td>
-                        <td className="px-3 py-1.5 text-slate-400 text-[11px]">{deliverableDisplayName(w)}</td>
-                        <td className="px-3 py-1.5 whitespace-nowrap">
-                          <div className="flex items-center gap-1">
-                            <Button variant="ghost" size="sm" title="Edit milestone" onClick={() => onEditMilestone(m)}>
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button variant="ghost" size="sm" title="Delete milestone" onClick={() => onDeleteMilestone(m)}>
-                              <Trash2 className="h-3.5 w-3.5 text-red-500" />
-                            </Button>
+                    ) : (
+                      <div className="space-y-1.5 pl-4 border-l-2 border-primary/40">
+                        {wMilestones.map((m) => (
+                          <div
+                            key={`deliv-ms-${m.id}`}
+                            className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-purple-200 bg-purple-50/30 hover:bg-purple-50/60 px-3 py-2 text-xs transition-colors"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span
+                                title={`Linked to ${deliverableDisplayName(w)}`}
+                                className="inline-flex items-center gap-1 text-primary font-semibold shrink-0"
+                              >
+                                <CornerDownRight className="h-4 w-4 text-purple-500" />
+                              </span>
+                              <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-400 shrink-0" />
+                              <button
+                                type="button"
+                                onClick={() => onEditMilestone(m)}
+                                className="font-semibold text-slate-800 hover:text-primary hover:underline truncate text-left"
+                              >
+                                {m.name}
+                              </button>
+                              <span className="inline-flex items-center rounded-full border border-purple-500 bg-purple-100/95 px-2 py-0.5 text-[10px] font-semibold text-purple-950">
+                                Milestone · 1d
+                              </span>
+                              <span className="text-[11px] text-slate-400 hidden sm:inline">
+                                → {deliverableDisplayName(w)}
+                              </span>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                              <span className="text-slate-600">
+                                Target: <b className="text-slate-800">{formatDate(m.targetDate)}</b>
+                              </span>
+                              <InlineStatusSelect
+                                value={m.status}
+                                options={MILESTONE_STATUSES}
+                                onChange={async (next) => {
+                                  try { await updateMilestone(m.id, { ...m, status: next as MilestoneStatus }) } catch (e) { onError(errorMessage(e)) }
+                                }}
+                              />
+                              <Button variant="ghost" size="sm" title="Edit milestone" onClick={() => onEditMilestone(m)}>
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button variant="ghost" size="sm" title="Delete milestone" onClick={() => onDeleteMilestone(m)}>
+                                <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                              </Button>
+                            </div>
                           </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {wTasks.map((t, tIdx) => {
-                      const isLastTask = tIdx === wTasks.length - 1
-                      return (
-                        <tr key={t.id} className="border-t border-slate-100 bg-white/80 hover:bg-blue-50/40 text-xs">
-                          <td className="pl-14 pr-2 py-1.5 whitespace-nowrap">
-                            <span className="inline-flex items-center gap-1.5">
-                              <span className="font-mono text-slate-300 text-xs leading-none">{isLastTask ? '└─' : '├─'}</span>
+                        ))}
+
+                        {wTasks.map((t, tIdx) => (
+                          <div
+                            key={t.id}
+                            className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white/90 hover:bg-blue-50/40 px-3 py-2 text-xs transition-colors"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span
+                                title={`Linked to ${deliverableDisplayName(w)}`}
+                                className="inline-flex items-center gap-1 text-primary shrink-0"
+                              >
+                                <CornerDownRight className="h-4 w-4 text-primary" />
+                              </span>
                               <CheckSquare className="h-3.5 w-3.5 text-primary shrink-0" />
                               <span className="text-[10px] font-semibold text-slate-400">#{tIdx + 1}</span>
                               <button
                                 type="button"
                                 onClick={() => onEditTask(t)}
-                                className="font-semibold text-slate-800 hover:text-primary hover:underline text-left"
+                                className="font-semibold text-slate-800 hover:text-primary hover:underline truncate text-left"
                               >
                                 {t.name}
                               </button>
-                            </span>
-                          </td>
-                          <td className="px-3 py-1.5 whitespace-nowrap">
-                            <div className="inline-flex items-center gap-1.5">
+                              <span className="text-[11px] text-slate-400 hidden sm:inline">
+                                → {deliverableDisplayName(w)}
+                              </span>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2.5 shrink-0">
                               <InlineStatusSelect
                                 value={t.priority}
                                 options={PRIORITIES}
@@ -1195,29 +1083,18 @@ function ProjectWithDeliverablesGroup({
                                   try { await updateTask(t.id, { ...t, priority: next as Priority }) } catch (e) { onError(errorMessage(e)) }
                                 }}
                               />
-                              <span className="text-[11px] text-slate-400 font-medium">{t.workingDays ?? 1}d</span>
-                            </div>
-                          </td>
-                          <td className="px-3 py-1.5 text-slate-500 truncate max-w-[180px]">{t.remarks || comm?.supplierName || '—'}</td>
-                          <td className="px-3 py-1.5">
-                            <InlineStatusSelect
-                              value={t.status}
-                              options={TASK_STATUSES}
-                              onChange={async (next) => {
-                                try { await updateTask(t.id, { ...t, status: next as TaskStatus }) } catch (e) { onError(errorMessage(e)) }
-                              }}
-                            />
-                          </td>
-                          <td className="px-3 py-1.5 whitespace-nowrap">
-                            <span className={isOverdueTask(t) ? 'text-red-600 font-semibold' : 'text-slate-600'}>
-                              {formatDate(t.startDate)} → <span className="font-semibold text-slate-800">{formatDate(t.dueDate)}</span>
-                            </span>
-                          </td>
-                          <td className="px-3 py-1.5">
-                            <DeadlineBadge task={t} />
-                          </td>
-                          <td className="px-3 py-1.5 whitespace-nowrap">
-                            <div className="flex items-center gap-1">
+                              <span className="text-[11px] font-medium text-slate-400">{t.workingDays ?? 1}d</span>
+                              <span className={isOverdueTask(t) ? 'text-red-600 font-semibold' : 'text-slate-600'}>
+                                {formatDate(t.startDate)} → <b className="text-slate-800">{formatDate(t.dueDate)}</b>
+                              </span>
+                              <DeadlineBadge task={t} />
+                              <InlineStatusSelect
+                                value={t.status}
+                                options={TASK_STATUSES}
+                                onChange={async (next) => {
+                                  try { await updateTask(t.id, { ...t, status: next as TaskStatus }) } catch (e) { onError(errorMessage(e)) }
+                                }}
+                              />
                               <Button variant="ghost" size="sm" title="Edit task" onClick={() => onEditTask(t)}>
                                 <Pencil className="h-3.5 w-3.5" />
                               </Button>
@@ -1225,17 +1102,17 @@ function ProjectWithDeliverablesGroup({
                                 <Trash2 className="h-3.5 w-3.5 text-red-500" />
                               </Button>
                             </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
-              </>
-            )}
-          </Fragment>
-        )
-      })}
-    </>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
   )
 }

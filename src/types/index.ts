@@ -28,6 +28,23 @@ export type HardwareCategory = (typeof HARDWARE_CATEGORIES)[number] | string
 export const NON_NPI_CATEGORIES = ['DOE', 'Web Development', 'Process Improvement', 'Automation / Tooling', 'Ad-hoc Task', 'Others'] as const
 export type NonNpiCategory = (typeof NON_NPI_CATEGORIES)[number] | string
 
+export const NON_NPI_CATEGORY_SHORT_CODES: Record<string, string> = {
+  DOE: 'DOE',
+  'Web Development': 'WEB',
+  'Process Improvement': 'PI',
+  'Automation / Tooling': 'AUTO',
+  'Ad-hoc Task': 'ADHOC',
+  Others: 'OTH',
+}
+
+export function getNonNpiCategoryShortCode(category?: string): string {
+  const trimmed = (category || '').trim()
+  if (!trimmed) return 'ADHOC'
+  if (NON_NPI_CATEGORY_SHORT_CODES[trimmed]) return NON_NPI_CATEGORY_SHORT_CODES[trimmed]
+  const firstToken = trimmed.split(/[\s/&_-]+/)[0].replace(/[^a-zA-Z0-9]/g, '')
+  return (firstToken.slice(0, 5) || 'OTH').toUpperCase()
+}
+
 export const HARDWARE_STATUSES = ['Not Started', 'Design', 'Fabrication', 'In Delivery', 'Delivered'] as const
 export type HardwareStatus = (typeof HARDWARE_STATUSES)[number]
 
@@ -36,7 +53,7 @@ export const PROGRESS_STEPS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100] as co
 export const WORKSTREAM_STATUSES = ['Not Started', 'In Progress', 'On Hold', 'Delayed', 'Completed'] as const
 export type WorkstreamStatus = (typeof WORKSTREAM_STATUSES)[number]
 
-export const TASK_STATUSES = ['Not Started', 'In Progress', 'Waiting for Supplier', 'Under Review', 'Completed', 'Cancelled'] as const
+export const TASK_STATUSES = ['Not Started', 'In Progress', 'Completed', 'Cancelled'] as const
 export const NON_NPI_TASK_STATUSES = ['Not Started', 'In Progress', 'On Hold', 'Completed', 'Cancelled'] as const
 export type TaskStatus = (typeof TASK_STATUSES)[number] | (typeof NON_NPI_TASK_STATUSES)[number]
 

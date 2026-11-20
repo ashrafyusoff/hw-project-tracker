@@ -1,8 +1,9 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Calendar, Check, CheckSquare, GripVertical, Layers, Plus, RotateCcw, Save, Star, Trash2 } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Calendar, CheckSquare, GripVertical, Layers, Plus, RotateCcw, Star, Trash2 } from 'lucide-react'
 import { PRIORITIES, type Priority } from '@/types'
-import { Badge, Button, Card, EmptyState, Input, Modal } from '@/components/ui'
+import { Button, Card, EmptyState, Input } from '@/components/ui'
+import { useSmoothDrag } from '@/hooks/useSmoothDrag'
+import { notify } from '@/services/toastService'
 import {
   addWorkingDays,
   buildDefaultSubTasks,
@@ -24,23 +25,42 @@ const PRIORITY_BAR: Record<Priority, string> = {
 }
 
 export function DeliverablesPage() {
-  const navigate = useNavigate()
   const [templates, setTemplates] = useState<DeliverableTemplate[]>(() => loadDeliverableTemplates())
   const [selectedId, setSelectedId] = useState<string>(() => loadDeliverableTemplates()[0]?.id ?? '')
   const [previewStart, setPreviewStart] = useState<string>(todayStr())
   const [newName, setNewName] = useState('')
-  const [createError, setCreateError] = useState('')
-  const [isDirty, setIsDirty] = useState(false)
-  const [savedToast, setSavedToast] = useState('')
-  const [pendingNav, setPendingNav] = useState<{ type: 'route'; to: string } | { type: 'select'; id: string } | null>(null)
-  const [draggingSubId, setDraggingSubId] = useState('')
-  const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map())
-  const prevRowRects = useRef<Map<string, DOMRect>>(new Map())
-  const lastRowSwapRef = useRef<{ toIdx: number; time: number }>({ toIdx: -1, time: 0 })
+  const setCreateError = (m: string) => { if (m) notify(m, 'err') }
   const ganttScrollRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(0)
 
   const selected = templates.find((t) => t.id === selectedId) ?? templates[0] ?? null
+
+  const {
+    draggingId: draggingSubId,
+    setItemRef: setRowRef,
+    onPointerDown: handleSlidePointerDown,
+    onPointerMove: handleSlidePointerMove,
+    onPointerEnd: handleSlidePointerEnd,
+  } = useSmoothDrag<HTMLTableRowElement>({
+    ids: selected?.subTasks.map((s) => s.id) ?? [],
+    axis: 'vertical',
+    onReorder: (fromIdx, toIdx) => {
+      if (!selected || fromIdx === toIdx) return
+      const selectedTemplateId = selected.id
+      setTemplates((prev) => {
+        const next = prev.map((t) => {
+          if (t.id !== selectedTemplateId) return t
+          const list = [...t.subTasks]
+          const [moved] = list.splice(fromIdx, 1)
+          if (!moved) return t
+          list.splice(toIdx, 0, moved)
+          return { ...t, subTasks: list, updatedAt: nowIso() }
+        })
+        saveDeliverableTemplates(next)
+        return next
+      })
+    },
+  })
 
   useEffect(() => {
     const onUndoSync = () => {
@@ -61,58 +81,20 @@ export function DeliverablesPage() {
   }, [selected?.id, selected?.subTasks.length])
 
   function showSaved(msg: string) {
-    setSavedToast(msg)
-    setTimeout(() => setSavedToast((m) => (m === msg ? '' : m)), 2800)
+    notify(msg, 'ok')
   }
-
-  function saveAllPermanently(list = templates, toastMsg = 'Deliverable & tasks saved permanently') {
-    saveDeliverableTemplates(list)
-    setIsDirty(false)
-    showSaved(toastMsg)
-  }
-
-  // Warn on browser tab close / reload if unsaved changes exist
-  useEffect(() => {
-    if (!isDirty) return
-    const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault()
-      e.returnValue = ''
-    }
-    window.addEventListener('beforeunload', onBeforeUnload)
-    return () => window.removeEventListener('beforeunload', onBeforeUnload)
-  }, [isDirty])
-
-  // Intercept in-app link clicks (Sidebar / TopBar) when unsaved changes exist
-  useEffect(() => {
-    if (!isDirty) return
-    const onClickCapture = (e: MouseEvent) => {
-      const anchor = (e.target as HTMLElement | null)?.closest('a[href]') as HTMLAnchorElement | null
-      if (!anchor) return
-      const href = anchor.getAttribute('href') || ''
-      const hashPath = href.startsWith('#') ? href.slice(1) : href
-      if (!hashPath || hashPath === '/deliverables') return
-      e.preventDefault()
-      e.stopPropagation()
-      setPendingNav({ type: 'route', to: hashPath })
-    }
-    document.addEventListener('click', onClickCapture, true)
-    return () => document.removeEventListener('click', onClickCapture, true)
-  }, [isDirty])
 
   function updateSelectedDraft(updater: (t: DeliverableTemplate) => DeliverableTemplate) {
     if (!selected) return
-    setTemplates((prev) =>
-      prev.map((t) => (t.id === selected.id ? { ...updater(t), updatedAt: nowIso() } : t)),
-    )
-    setIsDirty(true)
+    setTemplates((prev) => {
+      const next = prev.map((t) => (t.id === selected.id ? { ...updater(t), updatedAt: nowIso() } : t))
+      saveDeliverableTemplates(next)
+      return next
+    })
   }
 
   function handleSelectTemplate(id: string) {
     if (id === selected?.id) return
-    if (isDirty) {
-      setPendingNav({ type: 'select', id })
-      return
-    }
     setSelectedId(id)
   }
 
@@ -140,8 +122,7 @@ export function DeliverablesPage() {
     saveDeliverableTemplates(next)
     setSelectedId(item.id)
     setNewName('')
-    setIsDirty(false)
-    showSaved(`Created & saved deliverable "${name}"`)
+    showSaved(`Created deliverable "${name}"`)
   }
 
   function handleDeleteTemplate(id: string) {
@@ -150,7 +131,6 @@ export function DeliverablesPage() {
     saveDeliverableTemplates(next)
     if (selected?.id === id) {
       setSelectedId(next[0]?.id ?? '')
-      setIsDirty(false)
     }
     showSaved('Deliverable removed')
   }
@@ -166,101 +146,6 @@ export function DeliverablesPage() {
       priority: 'Medium',
     }
     updateSelectedDraft((t) => ({ ...t, subTasks: [...t.subTasks, nextSub] }))
-  }
-
-  function captureRowRects() {
-    const rects = new Map<string, DOMRect>()
-    rowRefs.current.forEach((el, id) => {
-      rects.set(id, el.getBoundingClientRect())
-    })
-    prevRowRects.current = rects
-  }
-
-  // Smooth Apple-style FLIP animation when task rows slide up or down to make space
-  useLayoutEffect(() => {
-    if (prevRowRects.current.size === 0) return
-    const prev = prevRowRects.current
-    prevRowRects.current = new Map()
-    rowRefs.current.forEach((el, id) => {
-      if (id === draggingSubId) return
-      const oldRect = prev.get(id)
-      if (!oldRect) return
-      const newRect = el.getBoundingClientRect()
-      const dy = oldRect.top - newRect.top
-      if (Math.abs(dy) > 1) {
-        el.getAnimations().forEach((a) => a.cancel())
-        el.animate(
-          [
-            { transform: `translateY(${dy}px)` },
-            { transform: 'translateY(0)' },
-          ],
-          {
-            duration: 420,
-            easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-          },
-        )
-      }
-    })
-  }, [selected?.subTasks, draggingSubId])
-
-  /** Hold-and-slide reordering: move a task to the position currently under the pointer. */
-  function moveSubTaskTo(subId: string, toIdx: number) {
-    if (!selected) return
-    const from = selected.subTasks.findIndex((s) => s.id === subId)
-    if (from < 0 || from === toIdx) return
-    const now = performance.now()
-    if (lastRowSwapRef.current.toIdx === toIdx && now - lastRowSwapRef.current.time < 220) return
-    lastRowSwapRef.current = { toIdx, time: now }
-    captureRowRects()
-    const selectedTemplateId = selected.id
-    setTemplates((prev) =>
-      prev.map((t) => {
-        if (t.id !== selectedTemplateId) return t
-        const list = [...t.subTasks]
-        const idx = list.findIndex((s) => s.id === subId)
-        if (idx < 0) return t
-        const [moved] = list.splice(idx, 1)
-        list.splice(toIdx, 0, moved)
-        return { ...t, subTasks: list, updatedAt: nowIso() }
-      }),
-    )
-    setIsDirty(true)
-  }
-
-  function rowIndexAtPointer(clientY: number, currentSubId: string): number {
-    if (!selected) return -1
-    const ids = selected.subTasks.map((s) => s.id)
-    const fromIdx = ids.indexOf(currentSubId)
-    if (fromIdx < 0) return -1
-
-    for (let i = 0; i < ids.length; i++) {
-      if (i === fromIdx) continue
-      const el = rowRefs.current.get(ids[i])
-      if (!el) continue
-      const r = el.getBoundingClientRect()
-      const midY = r.top + r.height / 2
-      if (i < fromIdx && clientY < midY) return i
-      if (i > fromIdx && clientY > midY) return i
-    }
-    return fromIdx
-  }
-
-  function handleSlidePointerDown(e: React.PointerEvent<HTMLButtonElement>, subId: string) {
-    e.preventDefault()
-    e.currentTarget.setPointerCapture(e.pointerId)
-    lastRowSwapRef.current = { toIdx: -1, time: 0 }
-    setDraggingSubId(subId)
-  }
-
-  function handleSlidePointerMove(e: React.PointerEvent<HTMLButtonElement>) {
-    if (!draggingSubId) return
-    const target = rowIndexAtPointer(e.clientY, draggingSubId)
-    if (target >= 0) moveSubTaskTo(draggingSubId, target)
-  }
-
-  function handleSlidePointerEnd(e: React.PointerEvent<HTMLButtonElement>) {
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
-    setDraggingSubId('')
   }
 
   function updateSubTask(subId: string, patch: Partial<DeliverableSubTaskTemplate>) {
@@ -286,27 +171,8 @@ export function DeliverablesPage() {
       t.id === selected.id ? { ...t, subTasks: nextTasks, updatedAt: nowIso() } : t,
     )
     setTemplates(next)
-    saveAllPermanently(next, `Reset "${selected.name}" to default (${nextTasks.length} steps) & saved permanently`)
-  }
-
-  function confirmSaveAndLeave() {
-    saveAllPermanently(templates)
-    const target = pendingNav
-    setPendingNav(null)
-    if (!target) return
-    if (target.type === 'route') navigate(target.to)
-    else setSelectedId(target.id)
-  }
-
-  function confirmDiscardAndLeave() {
-    const saved = loadDeliverableTemplates()
-    setTemplates(saved)
-    setIsDirty(false)
-    const target = pendingNav
-    setPendingNav(null)
-    if (!target) return
-    if (target.type === 'route') navigate(target.to)
-    else setSelectedId(target.id)
+    saveDeliverableTemplates(next)
+    showSaved(`Reset "${selected.name}" to default (${nextTasks.length} steps)`)
   }
 
   const schedule = useMemo(() => {
@@ -321,16 +187,6 @@ export function DeliverablesPage() {
 
   return (
     <div className="space-y-4">
-      {savedToast && (
-        <div
-          role="status"
-          className="fixed top-16 left-1/2 -translate-x-1/2 z-50 inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-4 py-1.5 text-xs font-semibold text-emerald-900 shadow-lg"
-        >
-          <Check className="h-3.5 w-3.5 text-emerald-600" />
-          {savedToast}
-        </div>
-      )}
-
       <div className="grid lg:grid-cols-12 gap-4 items-start">
         {/* LEFT: Deliverable Sets List + Create New Deliverable */}
         <div className="lg:col-span-4 xl:col-span-3 space-y-4">
@@ -340,14 +196,13 @@ export function DeliverablesPage() {
                 <label className="block text-xs font-medium text-slate-600 mb-1">Deliverable Name</label>
                 <Input
                   value={newName}
-                  onChange={(e) => { setNewName(e.target.value); setCreateError('') }}
+                  onChange={(e) => setNewName(e.target.value)}
                   placeholder="e.g. PCB, Socket, Probe Card"
                   className="!py-1.5 !text-xs"
                 />
-                {createError && <p className="mt-1 text-[11px] text-red-600">{createError}</p>}
               </div>
               <Button type="submit" variant="primary" size="sm" className="w-full">
-                <Plus className="h-3.5 w-3.5" /> Create & Save Deliverable
+                <Plus className="h-3.5 w-3.5" /> Create Deliverable
               </Button>
             </form>
           </Card>
@@ -405,11 +260,6 @@ export function DeliverablesPage() {
                 title={`Deliverable Tasks Setup — ${selected.name}`}
                 action={
                   <div className="flex flex-wrap items-center gap-2">
-                    {isDirty ? (
-                      <Badge color="amber">Unsaved changes</Badge>
-                    ) : (
-                      <Badge color="green">Saved</Badge>
-                    )}
                     <label className="inline-flex items-center gap-1.5 text-xs text-slate-600">
                       <Calendar className="h-3.5 w-3.5 text-slate-400" />
                       <span>Preview Start:</span>
@@ -426,14 +276,6 @@ export function DeliverablesPage() {
                     <Button size="sm" onClick={addSubTask}>
                       <Plus className="h-3.5 w-3.5" /> Add Task
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="primary"
-                      onClick={() => saveAllPermanently(templates)}
-                      title="Save deliverable and tasks permanently"
-                    >
-                      <Save className="h-3.5 w-3.5" /> Save Deliverable
-                    </Button>
                   </div>
                 }
               >
@@ -447,7 +289,7 @@ export function DeliverablesPage() {
                 </div>
 
                 <p className="text-xs text-slate-500 mb-2">
-                  Hold the grip button and slide a task up or down to rearrange it. Set working days and dependencies, then click <b>Save Deliverable</b>. Each task created for a deliverable is a real Task and appears on the Overview calendar on its due date.
+                  Hold the grip handle and slide a task up or down to rearrange it. All changes are saved automatically (press <b>Ctrl+Z</b> to undo).
                 </p>
 
                 <div className="overflow-x-auto -mx-4">
@@ -471,13 +313,10 @@ export function DeliverablesPage() {
                         return (
                           <tr
                             key={sub.id}
-                            ref={(el) => {
-                              if (el) rowRefs.current.set(sub.id, el)
-                              else rowRefs.current.delete(sub.id)
-                            }}
+                            ref={setRowRef(sub.id)}
                             className={cn(
-                              'border-b border-slate-100 hover:bg-slate-50/70 transition-all duration-200',
-                              draggingSubId === sub.id && 'bg-primary-soft shadow-md ring-1 ring-inset ring-primary/40 relative z-10',
+                              'border-b border-slate-100 hover:bg-slate-50/70',
+                              draggingSubId === sub.id && 'bg-primary-soft shadow-md ring-1 ring-inset ring-primary/40 relative z-20',
                             )}
                           >
                             <td className="px-2 py-1.5 whitespace-nowrap">
@@ -486,8 +325,8 @@ export function DeliverablesPage() {
                                   type="button"
                                   onPointerDown={(e) => handleSlidePointerDown(e, sub.id)}
                                   onPointerMove={handleSlidePointerMove}
-                                  onPointerUp={handleSlidePointerEnd}
-                                  onPointerCancel={handleSlidePointerEnd}
+                                  onPointerUp={(e) => handleSlidePointerEnd(e, sub.id)}
+                                  onPointerCancel={(e) => handleSlidePointerEnd(e, sub.id)}
                                   style={{ touchAction: 'none' }}
                                   className={cn(
                                     'p-1 rounded-lg text-slate-500 hover:bg-slate-200/70 select-none',
@@ -815,28 +654,6 @@ export function DeliverablesPage() {
           )}
         </div>
       </div>
-
-      {/* Unsaved Changes Pop-Up Reminder Modal */}
-      <Modal
-        open={!!pendingNav}
-        onClose={() => setPendingNav(null)}
-        title="Unsaved Deliverable Changes"
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-slate-600">
-            You have unsaved task changes for <b>{selected?.name}</b>. Would you like to save your deliverable tasks permanently before leaving?
-          </p>
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button onClick={() => setPendingNav(null)}>Stay on Page</Button>
-            <Button variant="danger" onClick={confirmDiscardAndLeave}>
-              Leave Without Saving
-            </Button>
-            <Button variant="primary" onClick={confirmSaveAndLeave}>
-              <Save className="h-3.5 w-3.5" /> Save & Leave
-            </Button>
-          </div>
-        </div>
-      </Modal>
     </div>
   )
 }

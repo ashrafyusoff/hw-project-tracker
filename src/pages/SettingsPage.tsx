@@ -26,6 +26,7 @@ import { clearSampleData, hasSampleData, loadSampleData } from '@/services/sampl
 import { isArchivedProject } from '@/types'
 import { todayStr } from '@/utils/helpers'
 import { errorMessage } from '@/utils/validation'
+import { notify } from '@/services/toastService'
 
 const LABELS: Record<string, string> = {
   projects: 'Projects', workstreams: 'Deliverables', suppliers: 'Suppliers', projectSuppliers: 'Project Suppliers', tasks: 'Tasks',
@@ -86,7 +87,7 @@ export function SettingsPage() {
   const [confirmReset, setConfirmReset] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
   const [confirmClearLogs, setConfirmClearLogs] = useState(false)
-  const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | undefined>()
+  const setMsg = (m: { type: 'ok' | 'err'; text: string }) => notify(m.text, m.type)
 
   // Synced workspace preferences
   const [weeksToShow, setWeeksToShow] = usePersistedState<number>('npi.calendar.weeksToShow', 4)
@@ -256,7 +257,6 @@ export function SettingsPage() {
         <AlertTriangle className="h-4 w-4 shrink-0" />
         <p>Your data is stored locally in this browser. It is not automatically synchronised across different devices or browsers. Export regular backups to prevent data loss.</p>
       </div>
-      {msg && <p className={`rounded-xl px-3.5 py-2 text-xs font-medium ${msg.type === 'ok' ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}`}>{msg.text}</p>}
 
       {/* Row 1: Appearance (left) + JSON Backup & Sample Data (right) */}
       <div className="grid lg:grid-cols-2 gap-3">

@@ -6,6 +6,7 @@ import { Badge, Button, Card } from '@/components/ui'
 import { usePersistedState } from '@/hooks/usePersistedState'
 import { duplicateTaskToDate, rescheduleTask, updateTask } from '@/services/taskService'
 import { duplicateMilestoneToDate, rescheduleMilestone } from '@/services/milestoneService'
+import { notify } from '@/services/toastService'
 import { TaskFormBody } from '@/features/tasks/TaskForm'
 import { MilestoneFormBody } from '@/features/tasks/MilestoneForm'
 import { cn, todayStr } from '@/utils/helpers'
@@ -151,8 +152,10 @@ function isTaskOverdue(t: Task, today: string): boolean {
   return t.status !== 'Completed' && t.status !== 'Cancelled' && !!t.dueDate && t.dueDate < today
 }
 
-// Task colour is strictly by priority; progress & completion remain tracked in text/metadata
+// Completed tasks are green, Cancelled tasks are dark grey; active tasks are coloured by priority
 function taskCardStyle(t: Task): string {
+  if (t.status === 'Completed') return 'border-emerald-400 bg-emerald-100/90 text-emerald-950'
+  if (t.status === 'Cancelled') return 'border-slate-500 bg-slate-600 text-slate-100 dark:border-slate-600 dark:bg-slate-700/95 dark:text-slate-200'
   return PRIORITY_CARD_STYLE[t.priority] ?? PRIORITY_CARD_STYLE.Medium
 }
 
@@ -199,13 +202,13 @@ export function WorkWeekCalendar({
   const clampedWeeks = Math.max(4, Math.min(10, weeksToShow))
   const [filterProject, setFilterProject] = usePersistedState<string>('npi.calendar.filterProject', '')
   const [selectedPriorities, setSelectedPriorities] = useState<Priority[]>([])
+  const [selectedStatuses, setSelectedStatuses] = useState<('Completed' | 'Cancelled')[]>([])
   const [filterMilestone, setFilterMilestone] = useState(false)
   const [dragOverCell, setDragOverCell] = useState<string>('')
   const [draggingId, setDraggingId] = useState<string>('')
   const [selectedItem, setSelectedItem] = useState<ItemRef | null>(null)
   const [selectedDay, setSelectedDay] = useState<string>('')
   const [clipboard, setClipboard] = useState<ClipboardItem | null>(null)
-  const [toast, setToast] = useState<string>('')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [newItemKind, setNewItemKind] = useState<'task' | 'milestone'>('task')
   const [drawerTarget, setDrawerTarget] = useState<
@@ -213,8 +216,7 @@ export function WorkWeekCalendar({
   >(null)
 
   const showToast = (msg: string) => {
-    setToast(msg)
-    setTimeout(() => setToast((t) => (t === msg ? '' : t)), 2800)
+    notify(msg, 'ok')
   }
 
   function openTaskDrawer(t: Task) {
@@ -242,9 +244,50 @@ export function WorkWeekCalendar({
     setSelectedPriorities((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]))
   }
 
-  const hasAnyFilter = selectedPriorities.length > 0 || filterMilestone
-  const isPriorityDimmed = (p: Priority) => hasAnyFilter && !selectedPriorities.includes(p)
+  function toggleStatusFilter(s: 'Completed' | 'Cancelled') {
+    setSelectedStatuses((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]))
+  }
+
+  const hasAnyFilter = selectedPriorities.length > 0 || selectedStatuses.length > 0 || filterMilestone
+  const isTaskDimmed = (t: Task) => {
+    if (!hasAnyFilter) return false
+    if (t.status === 'Completed' || t.status === 'Cancelled') {
+      if (selectedStatuses.includes(t.status)) return false
+      if (selectedStatuses.length > 0) return true
+    } else if (selectedStatuses.length > 0 && selectedPriorities.length === 0) {
+      return true
+    }
+    if (selectedPriorities.length > 0) {
+      if (t.status === 'Completed' || t.status === 'Cancelled') return !selectedStatuses.includes(t.status)
+      return !selectedPriorities.includes(t.priority)
+    }
+    return true
+  }
   const isMilestoneDimmed = hasAnyFilter && !filterMilestone
+
+  async function handleStatusBoxClick(status: 'Completed' | 'Cancelled') {
+    if (!selectedItem) {
+      showToast(`Select a task first, then click the box to mark it ${status}`)
+      return
+    }
+    if (selectedItem.kind !== 'task') {
+      showToast('Select a task to change its status')
+      return
+    }
+    const targetTask = tasks.find((t) => t.id === selectedItem.id)
+    if (!targetTask) return
+    if (targetTask.status === status) {
+      showToast(`"${targetTask.name}" is already ${status}`)
+      return
+    }
+    await updateTask(targetTask.id, {
+      ...targetTask,
+      status,
+      completionDate: status === 'Completed' ? todayStr() : targetTask.completionDate,
+      progress: status === 'Completed' ? 100 : targetTask.progress,
+    })
+    showToast(`Marked "${targetTask.name}" as ${status}`)
+  }
 
   async function handlePriorityBoxClick(p: Priority) {
     if (!selectedItem) {
@@ -315,7 +358,7 @@ export function WorkWeekCalendar({
   const busyDates = useMemo(() => {
     const s = new Set<string>()
     for (const t of tasks) {
-      if (t.status === 'Cancelled' || !t.dueDate || isTaskOverdue(t, today)) continue
+      if (!t.dueDate || isTaskOverdue(t, today)) continue
       if (filterProject && t.projectId !== filterProject) continue
       s.add(t.dueDate)
     }
@@ -365,7 +408,7 @@ export function WorkWeekCalendar({
   const itemsByDay = useMemo(() => {
     const map = new Map<string, { tasks: Task[]; milestones: Milestone[] }>()
     for (const t of tasks) {
-      if (t.status === 'Cancelled' || !t.dueDate || isTaskOverdue(t, today)) continue
+      if (!t.dueDate || isTaskOverdue(t, today)) continue
       if (filterProject && t.projectId !== filterProject) continue
       const key = snapToWorkdayYmd(t.dueDate)
       const bucket = map.get(key) ?? { tasks: [], milestones: [] }
@@ -579,7 +622,7 @@ export function WorkWeekCalendar({
           <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Priority:</span>
           {PRIORITY_ITEMS.map(({ priority, boxCls }) => {
             const isActive = selectedPriorities.includes(priority)
-            const isDimmed = isPriorityDimmed(priority)
+            const isDimmed = hasAnyFilter && !isActive
             return (
               <span key={priority} className="inline-flex items-center gap-1.5">
                 <button
@@ -630,10 +673,52 @@ export function WorkWeekCalendar({
             </span>
             Milestone
           </button>
+          <span className="text-slate-300">|</span>
+          {(
+            [
+              { status: 'Completed' as const, boxCls: 'bg-emerald-500 border-emerald-700', activeCls: 'bg-emerald-700 text-white font-semibold' },
+              { status: 'Cancelled' as const, boxCls: 'bg-slate-600 border-slate-700', activeCls: 'bg-slate-700 text-white font-semibold' },
+            ]
+          ).map(({ status, boxCls, activeCls }) => {
+            const isActive = selectedStatuses.includes(status)
+            const isDimmed = hasAnyFilter && !isActive
+            return (
+              <span key={status} className="inline-flex items-center gap-1.5">
+                <button
+                  type="button"
+                  data-priority-box
+                  onClick={() => void handleStatusBoxClick(status)}
+                  title={
+                    selectedItem?.kind === 'task'
+                      ? `Click colour box to mark "${selectedItem.name}" as ${status}`
+                      : `Select a task, then click to mark it ${status}`
+                  }
+                  className={cn(
+                    'h-3.5 w-3.5 rounded-sm border transition-transform hover:scale-110 cursor-pointer',
+                    boxCls,
+                    selectedItem?.kind === 'task' && 'ring-1 ring-offset-1 ring-slate-400',
+                  )}
+                />
+                <button
+                  type="button"
+                  onClick={() => toggleStatusFilter(status)}
+                  title={`Click word to ${isActive ? 'remove' : 'filter'} ${status} tasks`}
+                  className={cn(
+                    'cursor-pointer rounded px-1 py-0.5 transition-all select-none',
+                    isActive && activeCls,
+                    !isActive && isDimmed && 'opacity-40 hover:opacity-80',
+                    !isActive && !isDimmed && 'hover:bg-slate-100 font-medium text-slate-700',
+                  )}
+                >
+                  {status}
+                </button>
+              </span>
+            )
+          })}
           {hasAnyFilter && (
             <button
               type="button"
-              onClick={() => { setSelectedPriorities([]); setFilterMilestone(false) }}
+              onClick={() => { setSelectedPriorities([]); setSelectedStatuses([]); setFilterMilestone(false) }}
               className="text-[11px] text-primary hover:underline font-medium"
             >
               Show all
@@ -755,7 +840,7 @@ export function WorkWeekCalendar({
                   const ref: ItemRef = { kind: 'task', id: t.id, name: t.name }
                   const isCut = clipboard?.mode === 'cut' && clipboard.id === t.id
                   const isSelected = selectedItem?.id === t.id
-                  const dimmed = isPriorityDimmed(t.priority)
+                  const dimmed = isTaskDimmed(t)
                   return (
                     <div
                       key={t.id}
@@ -828,13 +913,13 @@ export function WorkWeekCalendar({
                   {clipboard ? (
                     <button
                       onClick={() => handlePaste(week.mondayYmd, week.ww)}
-                      className="mt-1.5 inline-flex items-center gap-1 rounded bg-primary px-1.5 py-0.5 text-[10px] font-medium text-white hover:bg-primary-hover"
+                      className="mt-1 inline-flex h-[18px] items-center justify-center gap-0.5 rounded-full bg-primary px-1.5 py-0 text-[9.5px] leading-none font-medium text-white hover:bg-primary-hover"
                       title="Paste onto Monday of this workweek"
                     >
-                      <ClipboardPaste className="h-3 w-3" /> Paste
+                      <ClipboardPaste className="h-2.5 w-2.5" /> Paste
                     </button>
                   ) : (
-                    <span className="text-[9px] text-slate-400 mt-1">Drop → Mon</span>
+                    <span className="mt-1 inline-flex h-[18px] items-center text-[9px] text-slate-400">Drop → Mon</span>
                   )}
                 </div>
 
@@ -869,24 +954,24 @@ export function WorkWeekCalendar({
                         isOver && 'bg-primary-soft ring-2 ring-inset ring-primary',
                       )}
                     >
-                      <div className="flex items-center justify-between text-[11px] mb-0.5 border-b border-slate-100 pb-0.5 shrink-0">
+                      <div className="flex h-[20px] items-center justify-between gap-1 text-[11px] mb-0.5 border-b border-slate-100 pb-0.5 shrink-0">
                         <span
                           onDoubleClick={(e) => { e.stopPropagation(); openNewTaskDrawer(day.ymd) }}
                           title="Double-click date to add task on this day"
-                          className={cn('font-medium cursor-pointer hover:text-primary', day.isToday ? 'text-primary font-bold' : 'text-slate-600')}
+                          className={cn('font-medium cursor-pointer hover:text-primary truncate leading-none', day.isToday ? 'text-primary font-bold' : 'text-slate-600')}
                         >
                           {day.dayLabel}
                           {totalDayItems > 0 && (
                             <span className="ml-1 text-[10px] font-normal text-slate-400">({totalDayItems})</span>
                           )}
                         </span>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 shrink-0">
                           {isSelectedDay && (
                             <button
                               type="button"
                               onClick={(e) => { e.stopPropagation(); openNewTaskDrawer(day.ymd) }}
                               title={`Add task on ${day.dayLabel}`}
-                              className="inline-flex items-center gap-0.5 rounded bg-primary/10 hover:bg-primary text-primary hover:text-white px-1 py-0.5 text-[10px] font-semibold transition-colors"
+                              className="inline-flex h-[16px] items-center gap-0.5 rounded-full bg-primary/10 hover:bg-primary text-primary hover:text-white px-1.5 py-0 text-[9.5px] leading-none font-semibold transition-colors"
                             >
                               <Plus className="h-2.5 w-2.5" /> Task
                             </button>
@@ -895,7 +980,7 @@ export function WorkWeekCalendar({
                           {clipboard && (
                             <button
                               onClick={(e) => { e.stopPropagation(); void handlePaste(day.ymd, week.ww) }}
-                              className="inline-flex items-center gap-0.5 rounded bg-primary/10 hover:bg-primary text-primary hover:text-white px-1 py-0.5 text-[10px] font-medium transition-colors"
+                              className="inline-flex h-[16px] items-center gap-0.5 rounded-full bg-primary/10 hover:bg-primary text-primary hover:text-white px-1.5 py-0 text-[9.5px] leading-none font-medium transition-colors"
                               title={`Paste "${clipboard.name}" onto ${day.dayLabel}`}
                             >
                               <ClipboardPaste className="h-2.5 w-2.5" /> Paste
@@ -958,7 +1043,7 @@ export function WorkWeekCalendar({
                           const ref: ItemRef = { kind: 'task', id: t.id, name: t.name }
                           const isCut = clipboard?.mode === 'cut' && clipboard.id === t.id
                           const isSelected = selectedItem?.id === t.id
-                          const dimmed = isPriorityDimmed(t.priority)
+                          const dimmed = isTaskDimmed(t)
                           return (
                             <div
                               key={t.id}
@@ -982,7 +1067,7 @@ export function WorkWeekCalendar({
                                 {!isTwoColMatrix && <GripVertical className="h-3.5 w-3.5 shrink-0 opacity-50 group-hover:opacity-90 mt-0.5" />}
                                 <CheckSquare className="h-3 w-3 shrink-0 mt-0.5" />
                                 <div className="min-w-0 flex-1">
-                                  <p className={cn('font-semibold truncate leading-tight', t.status === 'Completed' && 'line-through opacity-75')}>{t.name}</p>
+                                  <p className="font-semibold truncate leading-tight">{t.name}</p>
                                   <p className="text-[10px] opacity-80 truncate leading-tight mt-0.5">
                                     {itemSubtitle(t.projectId, t.workstreamId)}
                                   </p>
@@ -1105,14 +1190,6 @@ export function WorkWeekCalendar({
               </div>
             </div>
           </aside>
-          {toast && (
-            <div
-              role="status"
-              className="fixed top-16 left-1/2 -translate-x-1/2 z-50 rounded-full border border-emerald-300 bg-emerald-50 px-4 py-1.5 text-xs font-semibold text-emerald-900 shadow-lg"
-            >
-              {toast}
-            </div>
-          )}
         </>,
         document.body,
       )}

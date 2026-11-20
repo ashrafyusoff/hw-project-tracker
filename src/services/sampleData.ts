@@ -289,12 +289,12 @@ export async function loadSampleData() {
   }
   const webWork = {
     ...base(),
-    code: safeCode('Web Development A-002'),
+    code: safeCode('WEB A-002'),
     name: 'NPI Hardware & Lab Inventory Web Portal',
     isNonNpi: true,
     nonNpiCategory: 'Web Development',
     hwType: 'FT' as const,
-    deviceName: 'Web Development A-002',
+    deviceName: 'WEB A-002',
     atePlatform: '',
     description: 'Internal web dashboard for tracking load board storage racks, socket spare counts, and calibration dates.',
     objectives: '',
@@ -309,12 +309,12 @@ export async function loadSampleData() {
   }
   const impWork = {
     ...base(),
-    code: safeCode('Process Improvement A-003'),
+    code: safeCode('PI A-003'),
     name: 'Standardize PCB Design Rule Check (DRC) Checklist',
     isNonNpi: true,
     nonNpiCategory: 'Process Improvement',
     hwType: 'FT' as const,
-    deviceName: 'Process Improvement A-003',
+    deviceName: 'PI A-003',
     atePlatform: '',
     description: 'Unify V93000 and UltraFLEX schematic & layout review checklist to cut fabrication respins.',
     objectives: '',
@@ -329,12 +329,12 @@ export async function loadSampleData() {
   }
   const autoWork = {
     ...base(),
-    code: safeCode('Automation / Tooling A-004'),
+    code: safeCode('AUTO A-004'),
     name: 'Automated Gerber & Pin-Map Verification Script',
     isNonNpi: true,
     nonNpiCategory: 'Automation / Tooling',
     hwType: 'FT' as const,
-    deviceName: 'Automation / Tooling A-004',
+    deviceName: 'AUTO A-004',
     atePlatform: '',
     description: 'Python utility to cross-check Cadence Allegro netlist pin-maps against socket drawing coordinates.',
     objectives: '',
@@ -349,13 +349,13 @@ export async function loadSampleData() {
   }
   const labWork = {
     ...base(),
-    code: safeCode('Lab & Equipment A-005'),
+    code: safeCode('LAB A-005'),
     name: 'TDR & VNA Probe Station Annual Calibration',
     isNonNpi: true,
     isArchived: true,
     nonNpiCategory: 'Lab & Equipment',
     hwType: 'Eng' as const,
-    deviceName: 'Lab & Equipment A-005',
+    deviceName: 'LAB A-005',
     atePlatform: '',
     description: 'Verify 40GHz VNA calibration standards and replace worn SMA torque wrenches in NPI lab.',
     objectives: '',
@@ -523,17 +523,17 @@ export async function loadSampleData() {
   const hist13 = task(labWork.id, '', 'Complete 40GHz VNA SOLT calibration verification', 'Me', '', -13, -11, 'Medium', 'Completed', 100)
 
   // Carry-over & Current Week Tasks (-5d to +5d)
-  const t1 = task(orion.id, wOrionPcb.id, 'Chase revised RF PCB fabrication schedule', 'Me', nova.id, -9, -3, 'Critical', 'Waiting for Supplier', 50)
+  const t1 = task(orion.id, wOrionPcb.id, 'Chase revised RF PCB fabrication schedule', 'Me', nova.id, -9, -3, 'Critical', 'In Progress', 50)
   const t2 = task(impWork.id, '', 'Consolidate high-speed RF layout rules into DRC checklist', 'Me', '', -8, -1, 'Critical', 'In Progress', 60)
-  const t3 = task(falcon.id, wFalconPcb.id, 'Complete final load board Gerber & drill review', 'Me', nova.id, -4, 0, 'High', 'Under Review', 90)
+  const t3 = task(falcon.id, wFalconPcb.id, 'Complete final load board Gerber & drill review', 'Me', nova.id, -4, 0, 'High', 'In Progress', 90)
   const t4 = task(doeWork.id, '', 'Collect 25k insertion CRes data across 3 socket sites', 'Me', '', -3, 0, 'High', 'In Progress', 70)
-  const t5 = task(falcon.id, wFalconSock.id, 'Confirm coaxial pogo pin-map with Meridian', 'Me', meridian.id, -2, 1, 'High', 'Waiting for Supplier', 60)
+  const t5 = task(falcon.id, wFalconSock.id, 'Confirm coaxial pogo pin-map with Meridian', 'Me', meridian.id, -2, 1, 'High', 'In Progress', 60)
   const t6 = task(webWork.id, '', 'Build barcode scanner lookup view for rack tracker', 'Me', '', -3, 1, 'Medium', 'In Progress', 50)
   const t7 = task(orion.id, wOrionHandler.id, 'Review handler change kit 3D thermal clearance', 'Me', apex.id, -2, 2, 'High', 'In Progress', 60)
   const t8 = task(novaAi.id, wNovaPcb.id, 'Run 3D EM simulation on SERDES differential pairs', 'Me', '', -1, 2, 'Critical', 'In Progress', 40)
   const t9 = task(autoWork.id, '', 'Write parser for Cadence Allegro netlist export', 'Me', '', -1, 2, 'Medium', 'In Progress', 30)
   const t10 = task(atlas.id, wAtlasProbeCard.id, 'Verify wafer pad coordinates with design team', 'Me', formfactor.id, 0, 2, 'High', 'In Progress', 40)
-  const t11 = task(orion.id, wOrionSock.id, 'Approve 40GHz elastomer socket S-parameter model', 'Me', meridian.id, 0, 3, 'High', 'Under Review', 80)
+  const t11 = task(orion.id, wOrionSock.id, 'Approve 40GHz elastomer socket S-parameter model', 'Me', meridian.id, 0, 3, 'High', 'In Progress', 80)
   const t12 = task(falcon.id, wFalconPcb.id, 'Order high-precision power sense resistors', 'Me', bright.id, 1, 4, 'Medium', 'In Progress', 30)
 
   // Upcoming 8 Weeks Tasks (+7d to +55d)

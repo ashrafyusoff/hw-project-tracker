@@ -7,11 +7,11 @@ import { useTable } from '@/hooks/useTable'
 import { usePersistedState } from '@/hooks/usePersistedState'
 import type { Project, Supplier } from '@/types'
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Input, Loading, Modal, Select } from '@/components/ui'
-import { TabSaveControls } from '@/components/TabSaveControls'
 import { SupplierForm } from '@/features/suppliers/SupplierForm'
 import { deleteSupplier, getSupplierContacts, getSupplierDeliverables, linkSupplierToProject, unlinkSupplierFromProject } from '@/services/supplierService'
 import { formatDate } from '@/utils/helpers'
 import { errorMessage } from '@/utils/validation'
+import { notify } from '@/services/toastService'
 
 export function SuppliersPage() {
   const suppliers = useTable<Supplier>('suppliers')
@@ -22,7 +22,7 @@ export function SuppliersPage() {
   const [editing, setEditing] = useState<Supplier | undefined>()
   const [deleting, setDeleting] = useState<Supplier | undefined>()
   const [detailId, setDetailId] = useState('')
-  const [error, setError] = useState('')
+  const setError = (m: string) => { if (m) notify(m, 'err') }
 
   // Handle links from the top bar (?new=1 or ?open=<id>)
   useEffect(() => {
@@ -47,24 +47,14 @@ export function SuppliersPage() {
 
   if (!suppliers) return <Loading />
 
-  const suppliersFingerprint = JSON.stringify(suppliers)
-
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <Input placeholder="Search suppliers, category, contact, email…" value={search} onChange={(e) => setSearch(e.target.value)} className="!w-72" />
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <Button onClick={() => { setEditing(undefined); setFormOpen(true) }}><Plus className="h-4 w-4" /> Add Supplier</Button>
-          <TabSaveControls
-            tabKey="suppliers"
-            tabLabel="Suppliers"
-            buttonLabel="Save Suppliers"
-            fingerprint={suppliersFingerprint}
-            currentPathPrefix="/suppliers"
-          />
         </div>
       </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
       <Card className="!p-0">
         {rows.length === 0 ? (
           <EmptyState title={suppliers.length === 0 ? 'No suppliers yet' : 'No suppliers match your search'} hint={suppliers.length === 0 ? 'Click "Add Supplier" to start your directory.' : undefined} />
@@ -216,7 +206,7 @@ function SupplierRowGroup({
 // Detail panel: everything related to one supplier.
 function SupplierDetail({ supplierId, onClose }: { supplierId: string; onClose: () => void }) {
   const [linkId, setLinkId] = useState('')
-  const [error, setError] = useState('')
+  const setError = (m: string) => { if (m) notify(m, 'err') }
   const data = useLiveQuery(async () => {
     if (!supplierId) return null
     const [supplier, links, workstreams, tasks, projects] = await Promise.all([
@@ -279,8 +269,6 @@ function SupplierDetail({ supplierId, onClose }: { supplierId: string; onClose: 
             </div>
           )}
         </section>
-
-        {error && <p className="text-red-600">{error}</p>}
 
         <section>
           <div className="flex items-center justify-between mb-2">

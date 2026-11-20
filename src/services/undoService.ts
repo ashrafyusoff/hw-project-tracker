@@ -1,4 +1,5 @@
 import { db, TABLE_NAMES, type TableName } from '@/database/db'
+import { savePermanentSnapshot } from '@/services/backupService'
 
 interface DbChange {
   kind: 'db'
@@ -77,6 +78,7 @@ function flushPendingBatch() {
   }
   pendingChanges = []
   pendingLabel = ''
+  void savePermanentSnapshot()
 }
 
 function enqueueChange(change: UndoChange, label: string) {

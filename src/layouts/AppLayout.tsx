@@ -1,17 +1,20 @@
 import { useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
-import { RotateCcw } from 'lucide-react'
+import { AlertCircle, CheckCircle2, RotateCcw } from 'lucide-react'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
 import { cn } from '@/utils/helpers'
 import { useTheme } from '@/hooks/useTheme'
 import { ensurePermanentSnapshotLoaded } from '@/services/backupService'
 import { initGlobalUndo, undoLastAction, withoutUndo } from '@/services/undoService'
+import { notify, subscribeToast, type ToastMessage } from '@/services/toastService'
 
 // The frame shared by every page: sidebar on the left, top bar on top, page content below.
 export function AppLayout() {
   useTheme()
-  const [undoToast, setUndoToast] = useState('')
+  const [toast, setToast] = useState<ToastMessage | null>(null)
+
+  useEffect(() => subscribeToast(setToast), [])
 
   useEffect(() => {
     initGlobalUndo()
@@ -34,9 +37,7 @@ export function AppLayout() {
 
       e.preventDefault()
       void undoLastAction().then(({ undone, label }) => {
-        const msg = undone ? `Undone: ${label}` : 'Nothing to undo'
-        setUndoToast(msg)
-        window.setTimeout(() => setUndoToast((cur) => (cur === msg ? '' : cur)), 2400)
+        notify(undone ? `Undone: ${label}` : 'Nothing to undo', 'info', 2400)
       })
     }
     window.addEventListener('keydown', onKeyDown)
@@ -47,13 +48,21 @@ export function AppLayout() {
   const toggle = () => setCollapsed((c) => { localStorage.setItem('sidebar-collapsed', c ? '0' : '1'); return !c })
   return (
     <div className="min-h-screen">
-      {undoToast && (
+      {toast && (
         <div
+          key={toast.id}
           role="status"
-          className="fixed top-16 left-1/2 -translate-x-1/2 z-[80] inline-flex items-center gap-1.5 rounded-full liquid-glass px-4 py-1.5 text-xs font-semibold text-slate-800 shadow-lg"
+          className={cn(
+            'pointer-events-none fixed top-16 left-1/2 -translate-x-1/2 z-[90] inline-flex items-center gap-2 rounded-full liquid-glass px-4 py-1.5 text-xs font-semibold shadow-lg backdrop-blur-md max-w-[90vw]',
+            toast.type === 'ok' && 'ring-1 ring-emerald-400/75 text-emerald-800 dark:ring-emerald-400/55 dark:text-emerald-200',
+            toast.type === 'err' && 'ring-1 ring-red-400/75 text-red-700 dark:ring-red-400/55 dark:text-red-300',
+            toast.type === 'info' && 'ring-1 ring-primary/45 text-slate-800 dark:text-slate-100',
+          )}
         >
-          <RotateCcw className="h-3.5 w-3.5 text-primary" />
-          <span>{undoToast}</span>
+          {toast.type === 'ok' && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />}
+          {toast.type === 'err' && <AlertCircle className="h-3.5 w-3.5 text-red-600 dark:text-red-400 shrink-0" />}
+          {toast.type === 'info' && <RotateCcw className="h-3.5 w-3.5 text-primary shrink-0" />}
+          <span className="truncate">{toast.text}</span>
         </div>
       )}
       <Sidebar collapsed={collapsed} onToggle={toggle} />

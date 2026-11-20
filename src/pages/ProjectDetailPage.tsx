@@ -5,7 +5,6 @@ import { Archive, ArrowLeft, Calendar, CheckSquare, ChevronDown, ChevronRight, C
 import { db } from '@/database/db'
 import { MILESTONE_STATUSES, PRIORITIES, TASK_STATUSES, isArchivedProject, type Milestone, type MilestoneStatus, type Priority, type Supplier, type Task, type TaskStatus, type Workstream } from '@/types'
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Loading, Select } from '@/components/ui'
-import { TabSaveControls } from '@/components/TabSaveControls'
 import { ProjectForm } from '@/features/projects/ProjectForm'
 import { WorkstreamForm } from '@/features/projects/WorkstreamForm'
 import { ProjectGanttChart } from '@/features/projects/ProjectGanttChart'
@@ -24,6 +23,7 @@ import { deleteWorkstream } from '@/services/workstreamService'
 import { linkSupplierToProject, unlinkSupplierFromProject } from '@/services/supplierService'
 import { daysUntil, formatDate, formatDateTime, isPast, todayStr } from '@/utils/helpers'
 import { errorMessage } from '@/utils/validation'
+import { notify } from '@/services/toastService'
 
 const TABS = ['Overview', 'Deliverables & Commercial', 'Tasks', 'Suppliers', 'Milestones', 'Activity History'] as const
 type Tab = (typeof TABS)[number]
@@ -95,7 +95,7 @@ export function ProjectDetailPage() {
   const [msDeleting, setMsDeleting] = useState<Milestone | undefined>()
 
   const [linkId, setLinkId] = useState('')
-  const [error, setError] = useState('')
+  const setError = (m: string) => { if (m) notify(m, 'err') }
 
   const commercialRows = useMemo(() => {
     if (!data?.project) return []
@@ -127,16 +127,6 @@ export function ProjectDetailPage() {
   })[t as string]
 
   const archived = isArchivedProject(p)
-  const detailFingerprint = JSON.stringify({
-    project: p,
-    workstreams,
-    tasks,
-    milestones,
-    quotations: data.quotations,
-    pets: data.pets,
-    pos: data.pos,
-    links: data.links,
-  })
 
   return (
     <div className="space-y-4">
@@ -166,19 +156,8 @@ export function ProjectDetailPage() {
           )}
           {!archived && <Button onClick={() => setEditOpen(true)}><Pencil className="h-4 w-4" /> Edit</Button>}
           <Button onClick={() => setDeleteOpen(true)}><Trash2 className="h-4 w-4 text-red-500" /> Delete</Button>
-          {!archived && (
-            <TabSaveControls
-              tabKey={`project-${p.id}`}
-              tabLabel={`Project ${p.code}`}
-              buttonLabel="Save Project"
-              fingerprint={detailFingerprint}
-              currentPathPrefix={`/projects/${p.id}`}
-            />
-          )}
         </div>
       </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
-
       <div className="flex gap-1 overflow-x-auto border-b border-slate-200">
         {TABS.map((t) => (
           <button key={t} onClick={() => setTab(t)}

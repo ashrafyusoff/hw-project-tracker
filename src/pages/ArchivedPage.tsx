@@ -25,6 +25,7 @@ import { exportReport, exportSingleProjectReport } from '@/services/exportServic
 import { deleteProject } from '@/services/projectService'
 import { formatDate } from '@/utils/helpers'
 import { errorMessage } from '@/utils/validation'
+import { notify } from '@/services/toastService'
 
 type SortKey = 'code' | 'hwType' | 'deviceName' | 'status' | 'target'
 
@@ -48,7 +49,7 @@ export function ArchivedPage() {
   const [sort, setSort] = usePersistedState<{ key: SortKey; dir: 1 | -1 }>('npi.archived.sort', { key: 'code', dir: 1 })
   const [collapsedIds, setCollapsedIds] = usePersistedState<Record<string, boolean>>('npi.archived.collapsedIds', {})
   const [deleting, setDeleting] = useState<Project | undefined>()
-  const [error, setError] = useState('')
+  const setError = (m: string) => { if (m) notify(m, 'err') }
 
   const commercialRows = useMemo(() => {
     if (!workstreams || !quotations || !pets || !pos || !projects || !suppliers) return []
@@ -118,8 +119,6 @@ export function ArchivedPage() {
           <FileSpreadsheet className="h-4 w-4" /> Export All Archived
         </Button>
       </div>
-
-      {error && <p className="text-sm text-red-600">{error}</p>}
 
       <Card className="!p-0">
         {rows.length === 0 ? (

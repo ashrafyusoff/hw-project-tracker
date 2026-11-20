@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { Check, Save } from 'lucide-react'
+import { Save } from 'lucide-react'
 import { Badge, Button, Modal } from '@/components/ui'
 import {
   ensurePermanentSnapshotLoaded,
   restorePermanentSnapshot,
   savePermanentSnapshot,
 } from '@/services/backupService'
+import { notify } from '@/services/toastService'
 
 const savedFingerprints = new Map<string, string>()
 
@@ -28,7 +28,6 @@ export function TabSaveControls({
 }) {
   const navigate = useNavigate()
   const [, setTick] = useState(0)
-  const [savedToast, setSavedToast] = useState('')
   const [pendingRoute, setPendingRoute] = useState<string | null>(null)
 
   useEffect(() => {
@@ -47,8 +46,7 @@ export function TabSaveControls({
   const isDirty = savedFp !== undefined && fingerprint !== '' && fingerprint !== savedFp
 
   function showToast(msg: string) {
-    setSavedToast(msg)
-    setTimeout(() => setSavedToast((m) => (m === msg ? '' : m)), 2800)
+    notify(msg, 'ok')
   }
 
   async function handleSave() {
@@ -122,18 +120,6 @@ export function TabSaveControls({
           <Save className="h-3.5 w-3.5" /> {buttonLabel ?? `Save ${tabLabel}`}
         </Button>
       </div>
-
-      {savedToast &&
-        createPortal(
-          <div
-            role="status"
-            className="fixed top-16 left-1/2 -translate-x-1/2 z-50 inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-4 py-1.5 text-xs font-semibold text-emerald-900 shadow-lg"
-          >
-            <Check className="h-3.5 w-3.5 text-emerald-600" />
-            {savedToast}
-          </div>,
-          document.body,
-        )}
 
       <Modal
         open={!!pendingRoute}

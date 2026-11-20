@@ -23,7 +23,7 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   letter-spacing: normal;
-  background-color: #dbe3ee;
+  background-color: #c7d2e0;
 }
 
 h1, h2, h3, h4 {
@@ -31,15 +31,15 @@ h1, h2, h3, h4 {
 }
 
 html.dark body {
-  background-color: #0f172a;
+  background-color: #070b14;
   color: #f1f5f9;
 }
 
 /* Apple Clean Flat Style — crisp geometry, clear light-mode contrast, zero blur lag */
 .liquid-glass {
   background-color: #ffffff;
-  border: 1px solid #cbd5e1;
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.07), 0 1px 3px rgba(15, 23, 42, 0.04);
+  border: 1px solid #94a3b8;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.10), 0 1px 3px rgba(15, 23, 42, 0.06);
 }
 
 .liquid-card-header {
@@ -49,18 +49,18 @@ html.dark body {
 
 .liquid-glass-chrome {
   background-color: #ffffff;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
 }
 
 .liquid-glass-pill {
-  background-color: #eef2f7;
-  border: 1px solid #cbd5e1;
+  background-color: #e6ecf4;
+  border: 1px solid #b4c2d4;
 }
 
 html.dark .liquid-glass {
   background-color: #1e293b !important;
-  border-color: #334155 !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
+  border-color: #3b4b63 !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5) !important;
 }
 
 html.dark .liquid-card-header {
